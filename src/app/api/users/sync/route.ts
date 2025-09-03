@@ -10,7 +10,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { clerkId, username, email, name, avatarUrl } = await request.json();
+    let requestBody;
+    try {
+      requestBody = await request.json();
+    } catch (jsonError) {
+      console.error('Error parsing JSON in user sync:', jsonError);
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
+    }
+
+    const { clerkId, username, email, name, avatarUrl } = requestBody;
 
     // Verify the clerk ID matches the authenticated user
     if (clerkId !== userId) {

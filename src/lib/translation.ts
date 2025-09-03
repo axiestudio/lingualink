@@ -37,11 +37,50 @@ export const SUPPORTED_LANGUAGES: LanguageOption[] = [
 ];
 
 class Translator1 {
-  private apiKey: string;
+  private apiKeys: string[];
   private baseUrl = 'https://api.featherless.ai/v1/chat/completions';
+  private keyUsageCount: Map<string, number> = new Map();
+  private keyLastUsed: Map<string, number> = new Map();
 
-  constructor(apiKey: string) {
-    this.apiKey = apiKey;
+  constructor(apiKeys: string | string[]) {
+    this.apiKeys = Array.isArray(apiKeys) ? apiKeys : [apiKeys];
+    console.log(`🔑 Featherless API initialized with ${this.apiKeys.length} key(s)`);
+
+    // Initialize usage tracking
+    this.apiKeys.forEach(key => {
+      this.keyUsageCount.set(key, 0);
+      this.keyLastUsed.set(key, 0);
+    });
+  }
+
+  /**
+   * Get the next available API key using round-robin with rate limiting awareness
+   * Feather Basic: 2 concurrent connections
+   * This helps distribute load across multiple keys
+   */
+  private getNextApiKey(): string {
+    const now = Date.now();
+
+    // Find the key that was used least recently
+    let bestKey = this.apiKeys[0];
+    let oldestUsage = this.keyLastUsed.get(bestKey) || 0;
+
+    for (const key of this.apiKeys) {
+      const lastUsed = this.keyLastUsed.get(key) || 0;
+      if (lastUsed < oldestUsage) {
+        bestKey = key;
+        oldestUsage = lastUsed;
+      }
+    }
+
+    // Update usage tracking
+    this.keyLastUsed.set(bestKey, now);
+    const currentCount = this.keyUsageCount.get(bestKey) || 0;
+    this.keyUsageCount.set(bestKey, currentCount + 1);
+
+    console.log(`🔄 Using Featherless key ${this.apiKeys.indexOf(bestKey) + 1}/${this.apiKeys.length} (used ${currentCount + 1} times)`);
+
+    return bestKey;
   }
 
   async translate(text: string, targetLanguage: string, sourceLanguage?: string): Promise<string> {
@@ -54,6 +93,9 @@ class Translator1 {
       ? `Translate the following text from ${sourceLanguage} to ${targetLang.name}. Return only the translation, no explanations:\n\n${text}`
       : `Translate the following text to ${targetLang.name}. Return only the translation, no explanations:\n\n${text}`;
 
+    // Get the best available API key
+    const apiKey = this.getNextApiKey();
+
     // Add timeout controller
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
@@ -63,10 +105,10 @@ class Translator1 {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
+          'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: 'meta-llama/Meta-Llama-3.1-8B-Instruct',
+          model: 'meta-llama/Meta-Llama-3.1-8B-Instruct', // 8B model = 1 concurrency cost
           messages: [
             {
               role: 'system',
@@ -86,6 +128,10 @@ class Translator1 {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
+        // Handle rate limiting specifically
+        if (response.status === 429) {
+          throw new Error(`Featherless rate limit exceeded (429) - consider adding more API keys for higher concurrency`);
+        }
         throw new Error(`Translator 1 API error: ${response.status} ${response.statusText}`);
       }
 
@@ -171,20 +217,52 @@ export class TranslationService {
   private translator2: Translator2 | null = null;
 
   constructor() {
-    const translator1Key = process.env.FEATHERLESS_API_KEY;
+    // Support multiple Featherless API keys for better concurrency
+    const featherlessKeys = this.getFeatherlessApiKeys();
     const translator2Key = process.env.OPENAI_API_KEY;
 
-    if (translator1Key) {
-      this.translator1 = new Translator1(translator1Key);
+    if (featherlessKeys.length > 0) {
+      this.translator1 = new Translator1(featherlessKeys);
+      console.log(`🚀 Featherless translator initialized with ${featherlessKeys.length} API key(s) for enhanced concurrency`);
     }
 
     if (translator2Key) {
       this.translator2 = new Translator2(translator2Key);
+      console.log('🔄 OpenAI translator initialized as backup');
     }
 
     if (!this.translator1 && !this.translator2) {
       throw new Error('No translation API keys configured');
     }
+  }
+
+  /**
+   * Extract all Featherless API keys from environment variables
+   * Supports FEATHERLESS_API_KEY, FEATHERLESS_API_KEY_1, FEATHERLESS_API_KEY_2, etc.
+   */
+  private getFeatherlessApiKeys(): string[] {
+    const keys: string[] = [];
+
+    // Check for primary key
+    const primaryKey = process.env.FEATHERLESS_API_KEY;
+    if (primaryKey) {
+      keys.push(primaryKey);
+    }
+
+    // Check for numbered keys (FEATHERLESS_API_KEY_1, FEATHERLESS_API_KEY_2, etc.)
+    let keyIndex = 1;
+    while (keyIndex <= 10) { // Support up to 10 keys
+      const keyName = `FEATHERLESS_API_KEY_${keyIndex}`;
+      const key = process.env[keyName];
+      if (key) {
+        keys.push(key);
+        console.log(`✅ Found additional Featherless API key: ${keyName}`);
+      }
+      keyIndex++;
+    }
+
+    // Remove duplicates
+    return [...new Set(keys)];
   }
 
   async translateText(

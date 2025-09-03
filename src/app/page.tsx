@@ -1,8 +1,10 @@
 'use client'
 
-import { SignedIn, SignedOut } from '@clerk/nextjs'
+import { SignedIn, SignedOut, useUser } from '@clerk/nextjs'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   Globe,
   MessageSquare,
@@ -142,6 +144,29 @@ const LinguaLinkLogo = ({ className = "w-12 h-12" }: { className?: string }) => 
 )
 
 export default function Home() {
+  const { isSignedIn, isLoaded } = useUser();
+  const router = useRouter();
+
+  // Redirect to dashboard if user is signed in
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      console.log('🔄 User is signed in, redirecting to dashboard...');
+      router.push('/dashboard');
+    }
+  }, [isLoaded, isSignedIn, router]);
+
+  // Show loading while checking auth status
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 relative overflow-hidden">
       {/* Premium Background Elements */}

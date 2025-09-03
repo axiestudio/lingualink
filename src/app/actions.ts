@@ -10,6 +10,11 @@ const sql = neon(process.env.DATABASE_URL!);
 export async function initializeDatabase() {
   try {
     console.log('🔧 Initializing database with security enhancements...');
+
+    // Test database connection first
+    await sql`SELECT 1 as test`;
+    console.log('✅ Database connection successful');
+
     // Users table
     await sql`
       CREATE TABLE IF NOT EXISTS users (
@@ -27,6 +32,7 @@ export async function initializeDatabase() {
         is_online BOOLEAN DEFAULT false
       )
     `;
+    console.log('✅ Users table created/verified');
 
     // Rooms table
     await sql`
@@ -39,6 +45,7 @@ export async function initializeDatabase() {
         last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `;
+    console.log('✅ Rooms table created/verified');
 
     // Room participants table
     await sql`
@@ -50,8 +57,25 @@ export async function initializeDatabase() {
         UNIQUE(room_id, user_clerk_id)
       )
     `;
+    console.log('✅ Room participants table created/verified');
 
-    // Messages table
+    // Files table for file uploads
+    await sql`
+      CREATE TABLE IF NOT EXISTS files (
+        id SERIAL PRIMARY KEY,
+        original_name VARCHAR(255) NOT NULL,
+        file_name VARCHAR(255) NOT NULL,
+        file_size BIGINT NOT NULL,
+        file_type VARCHAR(100) NOT NULL,
+        upload_path TEXT NOT NULL,
+        uploaded_by VARCHAR(255) NOT NULL REFERENCES users(clerk_id),
+        room_id VARCHAR(255) REFERENCES rooms(room_id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+    console.log('✅ Files table created/verified');
+
+    // Messages table with file and threading support
     await sql`
       CREATE TABLE IF NOT EXISTS messages (
         id SERIAL PRIMARY KEY,
@@ -60,17 +84,112 @@ export async function initializeDatabase() {
         message TEXT NOT NULL,
         translated_message TEXT,
         target_language VARCHAR(10),
+        file_id INTEGER REFERENCES files(id),
+        file_metadata TEXT, -- JSON metadata for file attachments
+        reply_to_message_id INTEGER REFERENCES messages(id), -- For threading
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `;
+    console.log('✅ Messages table created/verified');
+
+    // 🔧 Add missing columns to existing messages table if they don't exist
+    try {
+      // Check and add reply_to_message_id column
+      const replyColumnCheck = await sql`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'messages'
+        AND column_name = 'reply_to_message_id'
+      `;
+
+      if (replyColumnCheck.length === 0) {
+        console.log('🔧 Adding missing reply_to_message_id column...');
+        await sql`ALTER TABLE messages ADD COLUMN reply_to_message_id INTEGER REFERENCES messages(id)`;
+        console.log('✅ Added reply_to_message_id column');
+      }
+
+      // Check and add file_id column
+      const fileColumnCheck = await sql`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'messages'
+        AND column_name = 'file_id'
+      `;
+
+      if (fileColumnCheck.length === 0) {
+        console.log('🔧 Adding missing file_id column...');
+        await sql`ALTER TABLE messages ADD COLUMN file_id INTEGER REFERENCES files(id)`;
+        console.log('✅ Added file_id column');
+      }
+
+      // Check and add file_metadata column
+      const metadataColumnCheck = await sql`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'messages'
+        AND column_name = 'file_metadata'
+      `;
+
+      if (metadataColumnCheck.length === 0) {
+        console.log('🔧 Adding missing file_metadata column...');
+        await sql`ALTER TABLE messages ADD COLUMN file_metadata TEXT`;
+        console.log('✅ Added file_metadata column');
+      }
+
+    } catch (columnError) {
+      console.warn('⚠️ Column addition check failed:', columnError instanceof Error ? columnError.message : String(columnError));
+    }
 
     // Create indexes for better performance
+    console.log('🔧 Creating database indexes...');
     await sql`CREATE INDEX IF NOT EXISTS idx_rooms_room_id ON rooms(room_id)`;
     await sql`CREATE INDEX IF NOT EXISTS idx_messages_room_id ON messages(room_id)`;
     await sql`CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at)`;
+
+    // Check if reply_to_message_id column exists before creating index
+    try {
+      const columnCheck = await sql`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'messages'
+        AND column_name = 'reply_to_message_id'
+      `;
+
+      if (columnCheck.length > 0) {
+        await sql`CREATE INDEX IF NOT EXISTS idx_messages_reply ON messages(reply_to_message_id)`;
+        console.log('✅ Reply index created');
+      } else {
+        console.log('⚠️ Skipping reply index - column does not exist');
+      }
+    } catch (error) {
+      console.log('⚠️ Skipping reply index - column check failed:', error instanceof Error ? error.message : String(error));
+    }
+
+    // Check if file_id column exists before creating index
+    try {
+      const fileColumnCheck = await sql`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'messages'
+        AND column_name = 'file_id'
+      `;
+
+      if (fileColumnCheck.length > 0) {
+        await sql`CREATE INDEX IF NOT EXISTS idx_messages_file ON messages(file_id)`;
+        console.log('✅ File index created');
+      } else {
+        console.log('⚠️ Skipping file index - column does not exist');
+      }
+    } catch (error) {
+      console.log('⚠️ Skipping file index - column check failed:', error instanceof Error ? error.message : String(error));
+    }
+
+    await sql`CREATE INDEX IF NOT EXISTS idx_files_room ON files(room_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_files_uploader ON files(uploaded_by)`;
     await sql`CREATE INDEX IF NOT EXISTS idx_users_clerk_id ON users(clerk_id)`;
     await sql`CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)`;
+    console.log('✅ Database indexes created/verified');
 
     // Create enhanced real-time notification function with user info
     await sql`
@@ -207,9 +326,25 @@ function generateRoomIdSync(userId1: string, userId2: string): string {
   const sortedIds = [userId1, userId2].sort();
 
   // Create a deterministic but secure room ID using crypto
-  const crypto = require('node:crypto');
   const combined = sortedIds.join('|');
-  const hash = crypto.createHash('sha256').update(combined).digest('hex');
+
+  // Use synchronous crypto for room ID generation
+  let hash: string;
+  try {
+    // Try Node.js crypto first (server-side)
+    const crypto = require('crypto');
+    hash = crypto.createHash('sha256').update(combined).digest('hex');
+  } catch (error) {
+    // Fallback: simple but deterministic hash function
+    console.warn('Node crypto not available, using deterministic hash fallback');
+    let simpleHash = 0;
+    for (let i = 0; i < combined.length; i++) {
+      const char = combined.charCodeAt(i);
+      simpleHash = ((simpleHash << 5) - simpleHash) + char;
+      simpleHash = simpleHash & simpleHash; // Convert to 32-bit integer
+    }
+    hash = Math.abs(simpleHash).toString(16).padStart(16, '0');
+  }
 
   // Use first 16 chars of hash for shorter, secure room ID
   return `room_${hash.substring(0, 16)}`;
@@ -219,10 +354,12 @@ function generateRoomIdSync(userId1: string, userId2: string): string {
 export async function getOrCreateRoom(currentUserId: string, targetUserId: string) {
   try {
     const roomId = generateRoomIdSync(currentUserId, targetUserId);
+    console.log(`🔍 Looking for room between ${currentUserId} and ${targetUserId}`);
+    console.log(`🏠 Generated room ID: ${roomId}`);
 
     // Check if room exists
     const existingRoom = await sql`
-      SELECT r.*, 
+      SELECT r.*,
              array_agg(
                json_build_object(
                  'clerk_id', u.clerk_id,
@@ -240,8 +377,12 @@ export async function getOrCreateRoom(currentUserId: string, targetUserId: strin
     `;
 
     if (existingRoom.length > 0) {
+      console.log(`✅ Found existing room: ${roomId}`);
+      console.log(`👥 Participants:`, existingRoom[0].participants);
       return existingRoom[0];
     }
+
+    console.log(`🆕 No existing room found, creating new room: ${roomId}`);
 
     // Create new room
     const newRoom = await sql`
@@ -395,7 +536,8 @@ export async function sendMessage(
   senderId: string,
   message: string,
   translatedMessage?: string,
-  targetLanguage?: string
+  targetLanguage?: string,
+  replyToMessageId?: number
 ) {
   try {
     // 🔒 SECURITY: Log message sending with privacy protection
@@ -404,12 +546,13 @@ export async function sendMessage(
       senderId: senderId.substring(0, 10) + '...',
       messageLength: message.length,
       hasTranslation: !!translatedMessage,
-      targetLanguage
+      targetLanguage,
+      isReply: !!replyToMessageId
     });
 
     const newMessage = await sql`
-      INSERT INTO messages (room_id, sender_clerk_id, message, translated_message, target_language)
-      VALUES (${roomId}, ${senderId}, ${message}, ${translatedMessage}, ${targetLanguage})
+      INSERT INTO messages (room_id, sender_clerk_id, message, translated_message, target_language, reply_to_message_id)
+      VALUES (${roomId}, ${senderId}, ${message}, ${translatedMessage}, ${targetLanguage}, ${replyToMessageId})
       RETURNING *
     `;
 
@@ -440,18 +583,58 @@ export async function getRoomMessages(roomId: string, limit: number = 50) {
   try {
     console.log("📥 Fetching messages for room:", roomId);
 
-    const messages = await sql`
-      SELECT
-        m.*,
-        u.username,
-        u.name as sender_name,
-        u.avatar_url as sender_avatar
-      FROM messages m
-      JOIN users u ON m.sender_clerk_id = u.clerk_id
-      WHERE m.room_id = ${roomId}
-      ORDER BY m.created_at DESC
-      LIMIT ${limit}
+    // Check if reply_to_message_id column exists
+    const columnCheck = await sql`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = 'messages'
+      AND column_name = 'reply_to_message_id'
     `;
+
+    let messages;
+
+    if (columnCheck.length > 0) {
+      // Full query with reply support
+      messages = await sql`
+        SELECT
+          m.*,
+          u.username,
+          u.name as sender_name,
+          u.avatar_url as sender_avatar,
+          reply_m.message as reply_to_message,
+          reply_m.sender_clerk_id as reply_to_sender_id,
+          reply_u.name as reply_to_sender_name,
+          reply_m.file_metadata as reply_to_file_metadata,
+          reply_m.created_at as reply_to_created_at
+        FROM messages m
+        JOIN users u ON m.sender_clerk_id = u.clerk_id
+        LEFT JOIN messages reply_m ON m.reply_to_message_id = reply_m.id
+        LEFT JOIN users reply_u ON reply_m.sender_clerk_id = reply_u.clerk_id
+        WHERE m.room_id = ${roomId}
+        ORDER BY m.created_at DESC
+        LIMIT ${limit}
+      `;
+    } else {
+      // Simplified query without reply support
+      console.log("⚠️ Using simplified query - reply_to_message_id column not found");
+      messages = await sql`
+        SELECT
+          m.*,
+          u.username,
+          u.name as sender_name,
+          u.avatar_url as sender_avatar,
+          null as reply_to_message,
+          null as reply_to_sender_id,
+          null as reply_to_sender_name,
+          null as reply_to_file_metadata,
+          null as reply_to_created_at
+        FROM messages m
+        JOIN users u ON m.sender_clerk_id = u.clerk_id
+        WHERE m.room_id = ${roomId}
+        ORDER BY m.created_at DESC
+        LIMIT ${limit}
+      `;
+    }
 
     const chronologicalMessages = messages.reverse(); // Return in chronological order
 

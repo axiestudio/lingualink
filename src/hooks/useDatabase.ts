@@ -159,7 +159,10 @@ export function useDatabase() {
   const sendMessage = useCallback(async (
     roomId: string,
     message: string,
-    receiverId?: string
+    receiverId?: string,
+    replyToMessageId?: number,
+    preTranslatedMessage?: string,
+    targetLanguage?: string
   ) => {
     try {
       const response = await fetch('/api/messages', {
@@ -168,7 +171,10 @@ export function useDatabase() {
         body: JSON.stringify({
           roomId,
           message,
-          receiverId
+          receiverId,
+          replyToMessageId,
+          preTranslatedMessage,
+          targetLanguage
         })
       });
 
@@ -177,10 +183,22 @@ export function useDatabase() {
       }
 
       const data = await response.json();
-      
-      // Reload conversations to update last message
-      await loadConversations();
-      
+
+      // 🚀 UX IMPROVEMENT: Update conversation list without full reload
+      // Only update the specific conversation's last message
+      if (data.message && roomId) {
+        setConversations(prev => prev.map(conv =>
+          conv.room_id === roomId
+            ? {
+                ...conv,
+                last_message: data.message.message,
+                last_message_time: data.message.created_at,
+                last_message_translated: data.message.translated_message
+              }
+            : conv
+        ));
+      }
+
       return data.message;
     } catch (err) {
       console.error('Error sending message:', err);

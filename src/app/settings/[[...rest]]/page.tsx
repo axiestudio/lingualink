@@ -18,49 +18,33 @@ import {
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { SUPPORTED_LANGUAGES } from '@/lib/translation';
+import { useLanguageSync } from '../../../hooks/useLanguageSync';
 
 export default function SettingsPage() {
   const { user, isLoaded } = useUser();
   const [activeTab, setActiveTab] = useState('profile');
-  const [userLanguage, setUserLanguage] = useState('en');
-  const [isUpdatingLanguage, setIsUpdatingLanguage] = useState(false);
 
-  // Load user language preference
-  useEffect(() => {
-    if (user?.id) {
-      fetch('/api/user/language')
-        .then(res => res.json())
-        .then(data => {
-          if (data.success) {
-            setUserLanguage(data.language);
-          }
-        })
-        .catch(err => console.error('Error loading language preference:', err));
+  // 🌐 Real-time Language Synchronization
+  const {
+    currentLanguage,
+    isLoading: isUpdatingLanguage,
+    error: languageError,
+    updatePrimaryLanguage,
+    isRealTimeConnected
+  } = useLanguageSync({
+    onLanguageChanged: (language) => {
+      console.log('✅ Language preference updated:', language);
+    },
+    onSyncError: (error) => {
+      console.error('❌ Language sync error:', error);
     }
-  }, [user?.id]);
+  });
 
-  // Update user language preference
+  // Update user language preference using the new hook
   const updateLanguage = async (languageCode: string) => {
-    setIsUpdatingLanguage(true);
-    try {
-      const response = await fetch('/api/user/language', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ language: languageCode })
-      });
-
-      if (response.ok) {
-        setUserLanguage(languageCode);
-        console.log(`✅ Language updated to: ${languageCode}`);
-      } else {
-        console.error('Failed to update language');
-        alert('Failed to update language preference');
-      }
-    } catch (error) {
-      console.error('Error updating language:', error);
-      alert('Error updating language preference');
-    } finally {
-      setIsUpdatingLanguage(false);
+    const success = await updatePrimaryLanguage(languageCode);
+    if (!success) {
+      alert('Failed to update language preference');
     }
   };
 
@@ -287,11 +271,17 @@ export default function SettingsPage() {
 
                       <div className="bg-blue-100 border border-blue-300 rounded-lg p-3 mb-6">
                         <p className="text-blue-800 text-sm">
-                          <strong>Current Language:</strong> {SUPPORTED_LANGUAGES.find(lang => lang.code === userLanguage)?.name || 'English'} ({SUPPORTED_LANGUAGES.find(lang => lang.code === userLanguage)?.nativeName || 'English'})
+                          <strong>Current Language:</strong> {SUPPORTED_LANGUAGES.find(lang => lang.code === currentLanguage.primary)?.name || 'English'} ({SUPPORTED_LANGUAGES.find(lang => lang.code === currentLanguage.primary)?.nativeName || 'English'})
                         </p>
                         <p className="text-blue-700 text-xs mt-1">
                           Translation will occur when you and your conversation partner have different language preferences.
                         </p>
+                        {isRealTimeConnected && (
+                          <p className="text-green-700 text-xs mt-1 flex items-center">
+                            <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                            Real-time sync enabled
+                          </p>
+                        )}
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -301,7 +291,7 @@ export default function SettingsPage() {
                             onClick={() => updateLanguage(language.code)}
                             disabled={isUpdatingLanguage}
                             className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${
-                              userLanguage === language.code
+                              currentLanguage.primary === language.code
                                 ? 'border-blue-500 bg-blue-50 text-blue-900'
                                 : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
                             } ${isUpdatingLanguage ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md'}`}
@@ -311,7 +301,7 @@ export default function SettingsPage() {
                                 <div className="font-medium">{language.name}</div>
                                 <div className="text-sm opacity-75">{language.nativeName}</div>
                               </div>
-                              {userLanguage === language.code && (
+                              {currentLanguage.primary === language.code && (
                                 <Check className="w-5 h-5 text-blue-600" />
                               )}
                             </div>

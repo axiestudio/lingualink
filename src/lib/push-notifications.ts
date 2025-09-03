@@ -1,11 +1,28 @@
 import webpush from 'web-push';
 
-// Configure VAPID keys
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT!,
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-);
+// Configure VAPID keys (optional for development)
+const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:dev@lingualink.tech';
+const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '';
+const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || '';
+
+console.log('🔧 Configuring push notifications...');
+console.log('📋 VAPID Subject:', vapidSubject);
+console.log('📋 VAPID Public Key:', vapidPublicKey ? `${vapidPublicKey.substring(0, 20)}...` : 'NOT SET');
+console.log('📋 VAPID Private Key:', vapidPrivateKey ? `${vapidPrivateKey.substring(0, 10)}...` : 'NOT SET');
+
+// Only set VAPID details if keys are provided
+if (vapidPublicKey && vapidPrivateKey) {
+  try {
+    webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
+    console.log('✅ VAPID keys configured for push notifications');
+  } catch (error) {
+    console.error('❌ Failed to configure VAPID keys:', error);
+    console.error('🔍 Check your VAPID keys in .env file');
+  }
+} else {
+  console.warn('⚠️ VAPID keys not configured - push notifications disabled');
+  console.warn('🔧 Add NEXT_PUBLIC_VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY to .env file');
+}
 
 // Store user subscriptions in memory (in production, use database)
 const userSubscriptions = new Map<string, PushSubscription>();
@@ -39,9 +56,15 @@ export function unsubscribeUser(userId: string) {
 
 // Send push notification to specific user
 export async function sendPushNotification(
-  userId: string, 
+  userId: string,
   payload: PushNotificationPayload
 ): Promise<boolean> {
+  // Check if VAPID keys are configured
+  if (!vapidPublicKey || !vapidPrivateKey) {
+    console.warn('⚠️ Push notifications disabled - VAPID keys not configured');
+    return false;
+  }
+
   const subscription = userSubscriptions.get(userId);
   
   if (!subscription) {

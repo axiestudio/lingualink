@@ -9,6 +9,7 @@ import {
 } from '@clerk/nextjs'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
+import CookieConsent from '@/components/CookieConsent'
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -21,8 +22,90 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Lingua Link - AI-Powered Translation Messaging',
-  description: 'Break down language barriers with AI-powered real-time translation in your conversations. Connect with anyone, anywhere, in any language.',
+  title: 'Lingua Link - Real-time Translation Messaging',
+  description: 'Break language barriers with real-time translation messaging. Connect with anyone, anywhere, in any language. Enterprise-grade security and PWA support.',
+  keywords: ['translation', 'messaging', 'real-time', 'multilingual', 'chat', 'communication', 'PWA'],
+  authors: [{ name: 'Axie Studio' }],
+  creator: 'Axie Studio',
+  publisher: 'Axie Studio',
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
+  metadataBase: new URL('http://localhost:3000'),
+  alternates: {
+    canonical: '/',
+  },
+  openGraph: {
+    title: 'Lingua Link - Real-time Translation Messaging',
+    description: 'Break language barriers with real-time translation messaging. Connect with anyone, anywhere, in any language.',
+    url: 'http://localhost:3000',
+    siteName: 'Lingua Link',
+    images: [
+      {
+        url: '/logo.svg',
+        width: 200,
+        height: 200,
+        alt: 'Lingua Link Logo',
+      },
+    ],
+    locale: 'en_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Lingua Link - Real-time Translation Messaging',
+    description: 'Break language barriers with real-time translation messaging.',
+    images: ['/logo.svg'],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  manifest: '/manifest.json',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: '32x32', type: 'image/x-icon' },
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512x512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: [
+      { url: '/icons/icon-192x192.png', sizes: '192x192', type: 'image/png' },
+    ],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Lingua Link',
+  },
+  verification: {
+    google: 'your-google-verification-code',
+  },
+  other: {
+    'apple-mobile-web-app-capable': 'yes',
+    'apple-mobile-web-app-status-bar-style': 'default',
+    'mobile-web-app-capable': 'yes',
+    'msapplication-TileColor': '#3b82f6',
+  },
+}
+
+// Separate viewport export as required by Next.js 15
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: '#3b82f6',
 }
 
 export default function RootLayout({
@@ -38,50 +121,7 @@ export default function RootLayout({
             {/* Premium Logo and Brand */}
             <div className="flex items-center space-x-4">
               <div className="w-10 h-10">
-                <svg viewBox="0 0 64 64" className="w-full h-full drop-shadow-lg">
-                  <circle cx="32" cy="32" r="30" fill="url(#headerPremiumGradient)" stroke="url(#headerBorderGradient)" strokeWidth="2"/>
-                  <circle cx="32" cy="32" r="26" fill="url(#headerInnerShine)" opacity="0.15"/>
-                  <path d="M16 24 Q16 20 20 20 L26 20 Q30 20 30 24 L30 28 Q30 32 26 32 L20 32 Q16 32 16 28 Z" fill="white" stroke="url(#headerAccentGradient)" strokeWidth="1.5" opacity="0.95"/>
-                  <path d="M34 32 Q34 28 38 28 L44 28 Q48 28 48 32 L48 36 Q48 40 44 40 L38 40 Q34 40 34 36 Z" fill="white" stroke="url(#headerAccentGradient)" strokeWidth="1.5" opacity="0.95"/>
-                  <path d="M30 26 Q32 24 34 26" stroke="url(#headerFlowGradient)" strokeWidth="3" fill="none" strokeLinecap="round" opacity="0.8"/>
-                  <path d="M34 38 Q32 40 30 38" stroke="url(#headerFlowGradient)" strokeWidth="3" fill="none" strokeLinecap="round" opacity="0.8"/>
-                  <text x="23" y="28" fontSize="10" fill="url(#headerTextGradient)" textAnchor="middle" fontWeight="700" fontFamily="system-ui">EN</text>
-                  <text x="41" y="36" fontSize="9" fill="url(#headerTextGradient)" textAnchor="middle" fontWeight="700" fontFamily="system-ui">中文</text>
-                  <circle cx="32" cy="32" r="2" fill="url(#headerCenterGradient)" opacity="0.6"/>
-                  <defs>
-                    <linearGradient id="headerPremiumGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#1e40af"/>
-                      <stop offset="30%" stopColor="#3b82f6"/>
-                      <stop offset="70%" stopColor="#6366f1"/>
-                      <stop offset="100%" stopColor="#1d4ed8"/>
-                    </linearGradient>
-                    <linearGradient id="headerBorderGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#1e3a8a"/>
-                      <stop offset="100%" stopColor="#312e81"/>
-                    </linearGradient>
-                    <linearGradient id="headerInnerShine" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#ffffff"/>
-                      <stop offset="100%" stopColor="#dbeafe"/>
-                    </linearGradient>
-                    <linearGradient id="headerAccentGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#3b82f6"/>
-                      <stop offset="100%" stopColor="#6366f1"/>
-                    </linearGradient>
-                    <linearGradient id="headerFlowGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#06b6d4"/>
-                      <stop offset="50%" stopColor="#3b82f6"/>
-                      <stop offset="100%" stopColor="#8b5cf6"/>
-                    </linearGradient>
-                    <linearGradient id="headerTextGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#1e40af"/>
-                      <stop offset="100%" stopColor="#312e81"/>
-                    </linearGradient>
-                    <linearGradient id="headerCenterGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#3b82f6"/>
-                      <stop offset="100%" stopColor="#6366f1"/>
-                    </linearGradient>
-                  </defs>
-                </svg>
+                <img src="/logo.svg" alt="Lingua Link Logo" className="w-full h-full drop-shadow-lg" />
               </div>
               <span className="text-2xl font-bold bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900 bg-clip-text text-transparent">
                 Lingua Link
@@ -113,6 +153,7 @@ export default function RootLayout({
             </div>
           </header>
           {children}
+          <CookieConsent />
         </body>
       </html>
     </ClerkProvider>

@@ -36,19 +36,54 @@ export function usePushNotifications() {
     }
   }, []);
 
-  // Register service worker
-  const registerServiceWorker = async () => {
+  // Register service worker with retry logic
+  const registerServiceWorker = async (retryCount = 0) => {
+    const maxRetries = 3;
+
     try {
-      const registration = await navigator.serviceWorker.register('/sw.js');
+      console.log(`🔧 Registering Service Worker (attempt ${retryCount + 1}/${maxRetries + 1})...`);
+
+      const registration = await navigator.serviceWorker.register('/sw.js', {
+        scope: '/',
+        updateViaCache: 'none'
+      });
+
       console.log('✅ Service Worker registered:', registration);
-      
+
+      // Wait for service worker to be ready
+      await navigator.serviceWorker.ready;
+      console.log('✅ Service Worker is ready');
+
       // Check if already subscribed
       const subscription = await registration.pushManager.getSubscription();
       setState(prev => ({ ...prev, isSubscribed: !!subscription }));
-      
+
+      // Listen for service worker updates
+      registration.addEventListener('updatefound', () => {
+        console.log('🔄 Service Worker update found');
+        const newWorker = registration.installing;
+        if (newWorker) {
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              console.log('🔄 New Service Worker installed, reloading...');
+              window.location.reload();
+            }
+          });
+        }
+      });
+
     } catch (error) {
-      console.error('❌ Service Worker registration failed:', error);
-      setState(prev => ({ ...prev, error: 'Failed to register service worker' }));
+      console.error(`❌ Service Worker registration failed (attempt ${retryCount + 1}):`, error);
+
+      if (retryCount < maxRetries) {
+        console.log(`🔄 Retrying Service Worker registration in 2 seconds...`);
+        setTimeout(() => registerServiceWorker(retryCount + 1), 2000);
+      } else {
+        setState(prev => ({
+          ...prev,
+          error: `Failed to register service worker after ${maxRetries + 1} attempts: ${error instanceof Error ? error.message : 'Unknown error'}`
+        }));
+      }
     }
   };
 

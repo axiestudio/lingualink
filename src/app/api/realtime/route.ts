@@ -70,6 +70,19 @@ export async function broadcastToRoom(roomId: string, messageData: any, senderUs
 }
 
 export async function GET(request: NextRequest) {
+  // TEMPORARILY DISABLED - SSE endpoint disabled to prevent flooding during Socket.IO transition
+  console.log('⚠️ SSE endpoint temporarily disabled - using Socket.IO instead');
+  return new Response('SSE endpoint temporarily disabled - using Socket.IO instead', {
+    status: 503,
+    headers: {
+      'Content-Type': 'text/plain',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    }
+  });
+
+  /*
   try {
     // 🔒 SECURITY: Authentication check
     const { userId } = await auth();
@@ -236,4 +249,5 @@ export async function DELETE(request: NextRequest) {
     console.error('Error closing connection:', error);
     return new Response('Internal Server Error', { status: 500 });
   }
+  */
 }

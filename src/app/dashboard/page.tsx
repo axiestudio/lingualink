@@ -1,11 +1,10 @@
 'use client'
 
-import { SignedIn, SignedOut, RedirectToSignIn, useUser } from '@clerk/nextjs';
+import { SignedIn, SignedOut, RedirectToSignIn, useUser, UserButton } from '@clerk/nextjs';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import {
   Search,
-  MoreHorizontal,
   Send,
   Globe,
   Zap,
@@ -15,10 +14,39 @@ import {
 } from 'lucide-react';
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useDatabase } from '../../hooks/useDatabase';
-import { useRealtimeMessages } from '../../hooks/useRealtime';
+// import { useRealtimeMessages } from '../../hooks/useRealtime'; // Disabled - using Socket.IO instead
+import { useSocket } from '../../hooks/useSocket';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
+import FileUpload from '../../components/FileUpload';
+import FileMessage from '../../components/FileMessage';
+import MessageReply from '../../components/MessageReply';
+import ThreadedMessage from '../../components/ThreadedMessage';
 
 // Real-time messaging with Neon PostgreSQL integration
+
+// Language names mapping
+const languageNames: { [key: string]: string } = {
+  'en': 'English',
+  'es': 'Spanish',
+  'fr': 'French',
+  'de': 'German',
+  'it': 'Italian',
+  'pt': 'Portuguese',
+  'ru': 'Russian',
+  'ja': 'Japanese',
+  'ko': 'Korean',
+  'zh': 'Chinese',
+  'ar': 'Arabic',
+  'hi': 'Hindi',
+  'tr': 'Turkish',
+  'pl': 'Polish',
+  'nl': 'Dutch',
+  'sv': 'Swedish',
+  'da': 'Danish',
+  'no': 'Norwegian',
+  'fi': 'Finnish',
+  'he': 'Hebrew'
+};
 
 export default function DashboardPage() {
   const { user } = useUser();
@@ -51,6 +79,7 @@ export default function DashboardPage() {
     isGroup: false
   });
   const [isSending, setIsSending] = useState(false);
+  const [replyToMessage, setReplyToMessage] = useState<any>(null);
 
   // Local conversations state to avoid reloading
   const [localConversations, setLocalConversations] = useState<any[]>([]);
@@ -121,20 +150,7 @@ export default function DashboardPage() {
       console.warn('Could not check room participants:', error);
     }
 
-    const languageNames: { [key: string]: string } = {
-      'en': 'English',
-      'es': 'Spanish',
-      'fr': 'French',
-      'de': 'German',
-      'it': 'Italian',
-      'pt': 'Portuguese',
-      'ru': 'Russian',
-      'ja': 'Japanese',
-      'ko': 'Korean',
-      'zh': 'Chinese',
-      'ar': 'Arabic',
-      'hi': 'Hindi'
-    };
+
 
     if (isGroupRoom) {
       // Group room: always translate to English
@@ -147,13 +163,13 @@ export default function DashboardPage() {
       };
     } else {
       // 1-on-1: translate based on recipient's language
-      const recipientLanguage = selectedConversation.language || 'en';
+      const recipientLanguage = selectedConversation.language_preference || 'en';
       const willTranslate = currentUserLanguage !== recipientLanguage;
 
       return {
         willTranslate,
         targetLanguage: recipientLanguage,
-        targetLanguageName: languageNames[recipientLanguage] || 'Unknown',
+        targetLanguageName: languageNames[recipientLanguage] || 'English',
         isGroup: false
       };
     }
@@ -188,10 +204,17 @@ export default function DashboardPage() {
 
       try {
         const users = await searchUsers(searchQuery);
-        // Filter out users who already have conversations
+
+        // 🔧 FIX: Don't filter out existing conversations!
+        // Users should be able to search for and find people they've already chatted with
+        // Add a flag to indicate if they already have a conversation
         const existingUserIds = new Set(localConversations.map(conv => conv.user_id));
-        const filteredUsers = users.filter(user => !existingUserIds.has(user.clerk_id));
-        setSearchResults(filteredUsers);
+        const enhancedUsers = users.map(user => ({
+          ...user,
+          hasExistingConversation: existingUserIds.has(user.clerk_id)
+        }));
+
+        setSearchResults(enhancedUsers);
       } catch (error) {
         console.error('Search error:', error);
         setSearchResults([]);
@@ -202,25 +225,42 @@ export default function DashboardPage() {
     return () => clearTimeout(debounceTimer);
   }, [searchQuery, searchUsers, conversations]);
 
-  // Handle starting a new conversation with a user
+  // Handle starting a conversation with a user (new or existing)
   const startNewConversation = async (targetUser: any) => {
     try {
+      // 🔧 FIX: Check if conversation already exists first
+      if (targetUser.hasExistingConversation) {
+        console.log('🔍 User has existing conversation, finding it...');
+
+        // Find the existing conversation
+        const existingConversation = localConversations.find(conv => conv.user_id === targetUser.clerk_id);
+        if (existingConversation) {
+          console.log('✅ Found existing conversation:', existingConversation.room_id);
+          setSelectedConversation(existingConversation);
+          setSearchQuery('');
+          return;
+        }
+      }
+
+      // Create new conversation if none exists
+      console.log('🆕 Creating new conversation with user:', targetUser.clerk_id);
       const room = await createConversation(targetUser.clerk_id);
 
-      // Find the new conversation in the updated list
-      const newConversation = localConversations.find(conv => conv.room_id === room.room_id);
-      if (newConversation) {
-        setSelectedConversation(newConversation);
+      // Find the conversation in the updated list (could be new or existing)
+      const conversation = localConversations.find(conv => conv.room_id === room.room_id);
+      if (conversation) {
+        setSelectedConversation(conversation);
       }
 
       setSearchQuery('');
 
-      console.log('🏠 New Room Created:', {
+      console.log('🏠 Room Ready:', {
         roomId: room.room_id,
+        isNew: !targetUser.hasExistingConversation,
         participants: room.participants
       });
     } catch (error) {
-      console.error('Error creating conversation:', error);
+      console.error('Error handling conversation:', error);
     }
   };
 
@@ -248,7 +288,7 @@ export default function DashboardPage() {
     }
   };
 
-  // Handle sending a message with optimistic updates
+  // Handle sending a message with optimistic updates and background translation
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedConversation || isSending) return;
 
@@ -258,39 +298,97 @@ export default function DashboardPage() {
     console.log('🚀 Sending message:', {
       roomId: selectedConversation.room_id,
       message: messageToSend,
-      receiverId: selectedConversation.user_id
+      receiverId: selectedConversation.user_id,
+      replyToMessageId: replyToMessage?.id
     });
 
     setIsSending(true);
 
-    // OPTIMISTIC UPDATE: Add message immediately to UI
+    // Get receiver's language preference for pre-translation
+    const receiverLanguage = selectedConversation.language_preference || 'en';
+    const senderLanguage = user?.publicMetadata?.language_preference as string || 'en';
+
+    // Pre-translate if languages differ
+    let preTranslatedMessage = null;
+    let targetLanguage = null;
+
+    if (receiverLanguage !== senderLanguage) {
+      try {
+        console.log('🔄 Pre-translating message in background...');
+        const response = await fetch('/api/translate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: messageToSend,
+            targetLanguage: receiverLanguage,
+            sourceLanguage: senderLanguage
+          })
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          preTranslatedMessage = result.translation.translatedText;
+          targetLanguage = receiverLanguage;
+          console.log('✅ Pre-translation completed');
+        }
+      } catch (error) {
+        console.warn('⚠️ Pre-translation failed, will translate server-side:', error);
+      }
+    }
+
+    // 🚀 INSTANT UX: Add message immediately to UI
     const optimisticMessage = {
       id: tempId,
       room_id: selectedConversation.room_id,
       sender_clerk_id: user?.id,
       message: messageToSend,
-      translated_message: null, // Will be filled when translation completes
-      target_language: null,
+      translated_message: preTranslatedMessage, // Pre-translated or null
+      target_language: targetLanguage,
       created_at: new Date().toISOString(),
       username: user?.username || 'You',
       sender_name: user?.fullName || user?.firstName || 'You',
       sender_avatar: user?.imageUrl || '',
-      sending: true // Flag to show loading state
+      sending: false, // 🚀 UX: Show as delivered immediately
+      translating: !preTranslatedMessage && receiverLanguage !== senderLanguage, // Show translation loading
+      optimistic: true, // Flag to identify optimistic messages
+      status: 'delivered' // Show delivered status immediately
     };
 
     // Clear input immediately and add optimistic message
     setNewMessage('');
+    setReplyToMessage(null);
     setMessages(prev => [...prev, optimisticMessage]);
 
     // 🚀 Immediately scroll to show the new message
     setTimeout(scrollToBottom, 100);
 
+    // 🚀 INSTANT SOCKET.IO BROADCAST - Send immediately via Socket.IO for instant delivery
+    if (socketConnected && socketAuth && broadcastMessage) {
+      broadcastMessage(
+        selectedConversation.room_id,
+        {
+          ...optimisticMessage,
+          instant: true, // Mark as instant delivery
+          sender_clerk_id: user?.id,
+          sender_name: user?.fullName || user?.firstName || 'You',
+          sender_avatar: user?.imageUrl || ''
+        },
+        user?.id || '',
+        (success) => {
+          console.log(`🚀 Instant Socket.IO delivery: ${success ? 'SUCCESS' : 'FAILED'}`);
+        }
+      );
+    }
+
     try {
-      // Send the message in background
+      // Send the message in background with pre-translated content
       const sentMessage = await dbSendMessage(
         selectedConversation.room_id,
         messageToSend,
-        selectedConversation.user_id
+        selectedConversation.user_id,
+        replyToMessage?.id,
+        preTranslatedMessage,
+        targetLanguage
       );
 
       if (sentMessage) {
@@ -343,50 +441,53 @@ export default function DashboardPage() {
     if (selectedConversation && messageData.room_id === selectedConversation.room_id) {
 
       setMessages(prevMessages => {
-        // If it's from current user, replace any optimistic message
+        // If it's from current user, update optimistic message smoothly
         if (messageData.sender_id === user?.id) {
-          console.log('📨 Replacing optimistic message with real message');
+          console.log('🔄 Updating optimistic message with server response');
           return prevMessages.map(msg => {
-            if (msg.sending && msg.message === messageData.message) {
-              // Replace optimistic message with real one
+            // Find optimistic message by content and user
+            if (msg.optimistic && msg.message === messageData.message && msg.sender_clerk_id === user?.id) {
+              // 🚀 SMOOTH UPDATE: Update optimistic message with real data
               return {
-                id: messageData.message_id,
-                room_id: messageData.room_id,
-                sender_clerk_id: messageData.sender_id,
-                message: messageData.message,
-                translated_message: messageData.translated_message,
+                ...msg, // Keep existing properties for smooth transition
+                id: messageData.message_id, // Update with real ID
+                translated_message: messageData.translated_message, // Add translation if available
                 target_language: messageData.target_language,
                 created_at: messageData.created_at,
-                username: user?.username || 'You',
-                sender_name: user?.fullName || user?.firstName || 'You',
-                sender_avatar: user?.imageUrl || '',
-                sending: false
+                sending: false,
+                translating: false, // Stop translation loading
+                optimistic: false // Mark as real message
               };
             }
             return msg;
           });
         } else {
           // Message from another user - add if not duplicate
-          const messageExists = prevMessages.some(msg => msg.id === messageData.message_id);
+          const messageExists = prevMessages.some(msg =>
+            msg.id === messageData.message_id ||
+            (messageData.instant && msg.message === messageData.message && msg.sender_clerk_id === messageData.sender_clerk_id)
+          );
           if (messageExists) {
             console.log('📨 Message already exists, skipping duplicate');
             return prevMessages;
           }
 
-          console.log('📨 Adding auto-triggered message from another user');
+          console.log('📨 Adding message from another user (instant delivery)');
           const newMessage = {
-            id: messageData.message_id,
+            id: messageData.message_id || messageData.id,
             room_id: messageData.room_id,
-            sender_clerk_id: messageData.sender_id,
+            sender_clerk_id: messageData.sender_clerk_id || messageData.sender_id,
             message: messageData.message,
             translated_message: messageData.translated_message,
             target_language: messageData.target_language,
-            created_at: messageData.created_at,
+            created_at: messageData.created_at || new Date().toISOString(),
             username: messageData.sender_name || 'Other User',
             sender_name: messageData.sender_name || 'Other User',
             sender_avatar: messageData.sender_avatar || '',
             sending: false, // Real message, not optimistic
-            autoTriggered: messageData.auto_triggered || false // Flag for auto-triggered
+            autoTriggered: messageData.auto_triggered || false, // Flag for auto-triggered
+            instant_delivery: messageData.instant || false, // Flag for instant Socket.IO delivery
+            received_at: new Date().toISOString()
           };
 
           // Add with smooth animation for auto-triggered messages
@@ -426,15 +527,65 @@ export default function DashboardPage() {
     }
   }, [loadConversations]);
 
-  // Initialize real-time connection
-  useRealtimeMessages(handleNewMessage, handleUserStatusChange);
+  // Initialize Socket.IO connection (primary) and SSE (fallback)
+  const { isConnected: socketConnected, isAuthenticated: socketAuth, joinRoom, leaveRoom, broadcastMessage } = useSocket({
+    onNewMessage: handleNewMessage,
+    onUserStatusChange: handleUserStatusChange,
+    onConnected: () => console.log('🔌 Socket.IO connected successfully'),
+    onDisconnected: () => console.log('🔌 Socket.IO disconnected'),
+    onError: (error) => console.error('❌ Socket.IO error:', error)
+  });
 
-  // Show loading state while user data is loading
+  // Fallback to SSE if Socket.IO fails (disabled during development since Socket.IO is working)
+  // useRealtimeMessages(handleNewMessage, handleUserStatusChange);
+
+  // Join room when conversation is selected and socket is ready
+  useEffect(() => {
+    if (selectedConversation && socketAuth) {
+      console.log(`🏠 Joining Socket.IO room: ${selectedConversation.room_id}`);
+      joinRoom(selectedConversation.room_id);
+
+      // Leave room when conversation changes
+      return () => {
+        if (selectedConversation) {
+          console.log(`🚪 Leaving Socket.IO room: ${selectedConversation.room_id}`);
+          leaveRoom(selectedConversation.room_id);
+        }
+      };
+    }
+  }, [selectedConversation, socketAuth, joinRoom, leaveRoom]);
+
+  // Handle reply to message
+  const handleReplyToMessage = useCallback((message: any) => {
+    setReplyToMessage({
+      id: message.id,
+      message: message.message,
+      sender_name: message.sender_name,
+      created_at: message.created_at,
+      file_metadata: message.file_metadata
+    });
+  }, []);
+
+  // Handle reply send
+  const handleSendReply = useCallback(async (replyText: string, replyToId: number) => {
+    if (!selectedConversation) return;
+
+    // Use the existing handleSendMessage logic but with reply context
+    setNewMessage(replyText);
+    await handleSendMessage();
+  }, [selectedConversation, handleSendMessage]);
+
+  // Cancel reply
+  const handleCancelReply = useCallback(() => {
+    setReplyToMessage(null);
+  }, []);
+
+  // Show loading state while user data is loading (with minimal flicker)
   if (!user) {
     return (
       <div className="h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-500 mx-auto mb-4" />
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-slate-600">Loading user...</p>
         </div>
       </div>
@@ -445,7 +596,7 @@ export default function DashboardPage() {
     return (
       <div className="h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-blue-500 mx-auto mb-4" />
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-slate-600">Connecting to Lingua Link...</p>
         </div>
       </div>
@@ -481,6 +632,55 @@ export default function DashboardPage() {
       <SignedIn>
         <div className="h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex flex-col overflow-hidden">
 
+          {/* Unified Header - Clean Single Header */}
+          <div className="bg-white/80 backdrop-blur-sm border-b border-slate-200/50 px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center">
+                    <span className="text-white font-bold text-sm">LL</span>
+                  </div>
+                  <h1 className="text-xl font-bold text-slate-900">Lingua Link</h1>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span className="text-sm text-slate-600">Online</span>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-3">
+                {/* 🚀 VAPID Push Notification Status */}
+                <div className={`flex items-center space-x-2 px-3 py-1 rounded-full ${
+                  pushNotifications.isSubscribed
+                    ? 'bg-green-50 text-green-600'
+                    : 'bg-orange-50 text-orange-600'
+                }`}>
+                  <Zap className={`w-4 h-4 ${
+                    pushNotifications.isSubscribed ? 'text-green-600' : 'text-orange-600'
+                  }`} />
+                  <span className="text-sm font-medium">
+                    {pushNotifications.isSubscribed ? 'Instant Push ✅' : 'Push Disabled ⚠️'}
+                  </span>
+                </div>
+
+                {/* Settings Button */}
+                <button
+                  onClick={() => router.push('/settings')}
+                  className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-colors duration-200"
+                  title="Settings"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span>Settings</span>
+                </button>
+
+                <UserButton />
+              </div>
+            </div>
+          </div>
+
           {/* Main Messaging Interface */}
           <div className="flex-1 flex overflow-hidden">
         {/* Conversations Sidebar */}
@@ -513,7 +713,7 @@ export default function DashboardPage() {
             {searchQuery && searchResults.length > 0 && (
               <div className="mt-3 bg-white rounded-xl border border-slate-200/50 shadow-lg">
                 <div className="p-3 border-b border-slate-200/50">
-                  <h4 className="text-sm font-medium text-slate-700">Start new conversation</h4>
+                  <h4 className="text-sm font-medium text-slate-700">Search Results</h4>
                 </div>
                 <div className="max-h-48 overflow-y-auto">
                   {searchResults.map((user: any) => (
@@ -537,6 +737,11 @@ export default function DashboardPage() {
                           <div className="flex items-center space-x-2">
                             <h3 className="font-medium text-slate-900">{user.name}</h3>
                             <span className="text-xs text-slate-500">@{user.username}</span>
+                            {user.hasExistingConversation && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                💬 Chat exists
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center space-x-2">
                             <span className="text-xs text-slate-500">{user.language}</span>
@@ -544,6 +749,9 @@ export default function DashboardPage() {
                             <span className="text-xs text-slate-400">
                               {user.is_online ? 'Online' : 'Offline'}
                             </span>
+                            {user.hasExistingConversation && (
+                              <span className="text-xs text-blue-600">• Click to continue chat</span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -625,7 +833,7 @@ export default function DashboardPage() {
         <div className="flex-1 flex flex-col bg-white/50 backdrop-blur-sm">
           {selectedConversation ? (
             <>
-          {/* Chat Header */}
+          {/* Chat Header - Conversation Details Only */}
           <div className="p-4 border-b border-slate-200/50 bg-white/80 backdrop-blur-sm">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
@@ -657,38 +865,16 @@ export default function DashboardPage() {
                   <Globe className="w-4 h-4 text-blue-600" />
                   <span className="text-sm text-blue-600 font-medium">Auto-Translate</span>
                 </div>
-
-                {/* 🚀 VAPID Push Notification Status */}
-                <div className={`flex items-center space-x-2 px-3 py-1 rounded-full ${
-                  pushNotifications.isSubscribed
-                    ? 'bg-green-50 text-green-600'
-                    : 'bg-orange-50 text-orange-600'
-                }`}>
-                  <Zap className={`w-4 h-4 ${
-                    pushNotifications.isSubscribed ? 'text-green-600' : 'text-orange-600'
-                  }`} />
-                  <span className="text-sm font-medium">
-                    {pushNotifications.isSubscribed ? 'Instant Push ✅' : 'Push Disabled ⚠️'}
-                  </span>
-                </div>
-
-                <button
-                  onClick={() => router.push('/settings')}
-                  className="p-2 hover:bg-slate-100 rounded-full transition-colors"
-                  title="Settings"
-                >
-                  <MoreHorizontal className="w-5 h-5 text-slate-600" />
-                </button>
               </div>
             </div>
           </div>
 
           {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 messages-container">
             {loadingMessages ? (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
-                  <Loader2 className="w-6 h-6 animate-spin text-blue-500 mx-auto mb-2" />
+                  <div className="w-6 h-6 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
                   <p className="text-slate-500 text-sm">Loading messages...</p>
                 </div>
               </div>
@@ -706,70 +892,27 @@ export default function DashboardPage() {
               messages.map((message: any) => {
                 const isOwn = message.sender_clerk_id === currentUserId;
                 const isAutoTriggered = message.autoTriggered;
+
+                // Find reply-to message if this is a reply
+                const replyToMsg = message.reply_to_message_id
+                  ? messages.find((m: any) => m.id === message.reply_to_message_id)
+                  : null;
+
                 return (
-                  <motion.div
+                  <div
                     key={message.id}
-                    initial={{ opacity: 0, y: 20, scale: isAutoTriggered ? 0.95 : 1 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    transition={{
-                      duration: isAutoTriggered ? 0.5 : 0.3,
-                      ease: isAutoTriggered ? "easeOut" : "easeInOut"
-                    }}
-                    className={`flex ${isOwn ? 'justify-end' : 'justify-start'} ${
+                    className={`group mb-4 ${isOwn ? 'text-right' : 'text-left'} ${
                       isAutoTriggered ? 'animate-pulse' : ''
                     }`}
                   >
-                    <div className={`max-w-xs lg:max-w-md ${isOwn ? 'order-2' : 'order-1'}`}>
-                      <div
-                        className={`px-4 py-3 rounded-2xl ${
-                          isOwn
-                            ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-br-md'
-                            : 'bg-white border border-slate-200/50 text-slate-900 rounded-bl-md'
-                        } shadow-sm ${message.sending ? 'opacity-70' : ''}`}
-                      >
-                        {/* Show translated message first if available, then original */}
-                        {message.translated_message ? (
-                          <div className="space-y-2">
-                            <p className="text-sm font-medium">{message.translated_message}</p>
-                            <div className={`text-xs p-2 rounded-lg border ${
-                              isOwn
-                                ? 'bg-white/10 border-white/20 text-blue-100'
-                                : 'bg-slate-50 border-slate-200 text-slate-600'
-                            }`}>
-                              <div className="flex items-center space-x-1 mb-1">
-                                <Globe className="w-3 h-3" />
-                                <span>Original:</span>
-                              </div>
-                              <p className="italic">{message.message}</p>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium">{message.message}</p>
-                            {message.sending && (
-                              <div className="flex items-center gap-1">
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                                <span className="text-xs opacity-75">Translating...</span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className={`flex items-center space-x-2 mt-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                        <span className="text-xs text-slate-400">
-                          {new Date(message.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                        </span>
-                        {message.sending && (
-                          <span className="text-xs text-slate-400 flex items-center gap-1">
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            Sending...
-                          </span>
-                        )}
-                        <span className="text-xs text-slate-400">{message.sender_name}</span>
-                      </div>
-                    </div>
-                  </motion.div>
+                    <ThreadedMessage
+                      message={message}
+                      replyToMessage={replyToMsg}
+                      isOwn={isOwn}
+                      onReply={handleReplyToMessage}
+                      showReplyButton={!message.sending}
+                    />
+                  </div>
                 );
               })
             )}
@@ -777,9 +920,35 @@ export default function DashboardPage() {
             <div ref={messagesEndRef} />
           </div>
 
+          {/* Reply Component */}
+          {replyToMessage && (
+            <MessageReply
+              replyToMessage={replyToMessage}
+              onReply={handleSendReply}
+              onCancelReply={handleCancelReply}
+              disabled={isSending}
+            />
+          )}
+
           {/* Message Input */}
           <div className="p-4 border-t border-slate-200/50 bg-white/80 backdrop-blur-sm">
             <div className="flex items-center space-x-3">
+              {/* File Upload Button */}
+              {selectedConversation && (
+                <FileUpload
+                  roomId={selectedConversation.room_id}
+                  onFileUploaded={(file, message) => {
+                    console.log('📁 File uploaded:', file, message);
+                    // File message will be received via Socket.IO/SSE
+                  }}
+                  onError={(error) => {
+                    console.error('❌ File upload error:', error);
+                    alert(`File upload failed: ${error}`);
+                  }}
+                  disabled={isSending}
+                />
+              )}
+
               <div className="flex-1">
                 <input
                   type="text"
@@ -820,12 +989,15 @@ export default function DashboardPage() {
                   <div className="flex items-center space-x-2 mb-2">
                     <Zap className="w-4 h-4 text-blue-500" />
                     <span className="text-sm font-medium text-blue-700">
-                      Will be translated to {translationInfo.targetLanguageName}:
+                      {translationInfo.isGroup
+                        ? `Message will be translated from ${languageNames[currentUserLanguage] || 'English'} to English for all participants`
+                        : `Message will be translated from ${languageNames[currentUserLanguage] || 'English'} to ${selectedConversation?.name}'s language (${translationInfo.targetLanguageName})`
+                      }
                     </span>
                   </div>
                   <p className="text-sm text-blue-600 italic">
                     {translationInfo.isGroup
-                      ? "Group conversation - will be translated to English for all participants"
+                      ? "Group conversations use English as the common language"
                       : "Translation will be generated automatically when you send this message"
                     }
                   </p>
@@ -842,14 +1014,14 @@ export default function DashboardPage() {
                     <span className="text-sm font-medium text-green-700">
                       {translationInfo.isGroup
                         ? "Group conversation - English only"
-                        : "Same language - no translation needed"
+                        : `No translation needed - you both use ${translationInfo.targetLanguageName}`
                       }
                     </span>
                   </div>
                   <p className="text-sm text-green-600 italic">
                     {translationInfo.isGroup
-                      ? "All participants use English in group conversations"
-                      : `Both you and ${selectedConversation?.name} use ${translationInfo.targetLanguageName}`
+                      ? "All participants communicate in English"
+                      : `Both you and ${selectedConversation?.name} have ${translationInfo.targetLanguageName} as your language preference`
                     }
                   </p>
                 </motion.div>

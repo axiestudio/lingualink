@@ -122,8 +122,22 @@ export function escapeSqlString(input: string): string {
 
 // Generate secure random tokens
 export function generateSecureToken(length: number = 32): string {
-  const crypto = require('node:crypto');
-  return crypto.randomBytes(length).toString('hex');
+  // Use Web Crypto API for browser compatibility
+  if (typeof window !== 'undefined' && window.crypto) {
+    const array = new Uint8Array(length);
+    window.crypto.getRandomValues(array);
+    return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  // Fallback for Node.js environment
+  try {
+    const crypto = require('crypto');
+    return crypto.randomBytes(length).toString('hex');
+  } catch (error) {
+    // Ultimate fallback using Math.random (less secure but works)
+    console.warn('Crypto not available, using Math.random fallback');
+    return Array.from({ length: length * 2 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+  }
 }
 
 // Password strength validation

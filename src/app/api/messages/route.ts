@@ -63,8 +63,15 @@ export async function POST(request: NextRequest) {
       return createRateLimitResponse('Too many messages. Please slow down.', rateLimit.resetTime);
     }
 
-    const { roomId, message, receiverId } = await request.json();
-    console.log('📋 Message send request:', { userId, roomId: roomId?.substring(0, 20) + '...', messageLength: message?.length, receiverId: receiverId?.substring(0, 10) + '...' });
+    const { roomId, message, receiverId, replyToMessageId, preTranslatedMessage, targetLanguage: clientTargetLanguage } = await request.json();
+    console.log('📋 Message send request:', {
+      userId,
+      roomId: roomId?.substring(0, 20) + '...',
+      messageLength: message?.length,
+      receiverId: receiverId?.substring(0, 10) + '...',
+      hasPreTranslation: !!preTranslatedMessage,
+      clientTargetLanguage
+    });
 
     // 🔒 SECURITY: Input validation
     if (!roomId || !message) {
@@ -92,11 +99,11 @@ export async function POST(request: NextRequest) {
       await getOrCreateRoom(userId, receiverId);
     }
 
-    // Get receiver's language preference for translation
-    let translatedMessage = undefined;
-    let targetLanguage = undefined;
+    // Handle translation - use pre-translated if available, otherwise translate server-side
+    let translatedMessage = preTranslatedMessage; // Use client-provided translation if available
+    let targetLanguage = clientTargetLanguage;
 
-    if (receiverId) {
+    if (receiverId && !preTranslatedMessage) {
       try {
         console.log('🔄 Getting room participants and language preferences...');
 
@@ -131,7 +138,7 @@ export async function POST(request: NextRequest) {
 
         // Only translate if needed
         if (shouldTranslate) {
-          console.log('🔄 Languages differ, translating message...');
+          console.log('🔄 Languages differ, translating message server-side...');
           const translationService = getTranslationService();
           const result = await translationService.translateText(
             sanitizedMessage,
@@ -156,9 +163,11 @@ export async function POST(request: NextRequest) {
         console.warn('⚠️ Translation failed, sending original message:', translationError);
         // Continue without translation if it fails
       }
+    } else if (preTranslatedMessage) {
+      console.log('✅ Using client-provided pre-translated message');
     }
 
-    const newMessage = await sendMessage(roomId, userId, sanitizedMessage, translatedMessage, targetLanguage);
+    const newMessage = await sendMessage(roomId, userId, sanitizedMessage, translatedMessage, targetLanguage, replyToMessageId);
 
     // Get sender info for real-time broadcast
     const senderInfo = await sql`
@@ -178,20 +187,53 @@ export async function POST(request: NextRequest) {
 
     console.log('📡 Auto-broadcasting message to room:', roomId);
 
-    // Auto-broadcast to all users in real-time (excluding sender)
-    const broadcaster = getBroadcaster();
-    await broadcaster.broadcastToRoom(roomId, {
-      room_id: roomId,
-      message_id: newMessage.id,
-      sender_id: userId,
-      message: newMessage.message,
-      translated_message: newMessage.translated_message,
-      target_language: newMessage.target_language,
-      created_at: newMessage.created_at,
-      sender_name: senderInfo[0]?.name || 'Unknown',
-      sender_avatar: senderInfo[0]?.avatar_url || '',
-      auto_triggered: true
-    }, userId);
+    // Auto-broadcast via Socket.IO (primary) and SSE (fallback)
+    try {
+      // Socket.IO broadcast (if available)
+      if (global.io) {
+        console.log('📡 Broadcasting via Socket.IO');
+        global.io.to(`room_${roomId}`).except(`user_${userId}`).emit('new_message', {
+          type: 'new_message',
+          payload: {
+            room_id: roomId,
+            message_id: newMessage.id,
+            sender_id: userId,
+            message: newMessage.message,
+            translated_message: newMessage.translated_message,
+            target_language: newMessage.target_language,
+            created_at: newMessage.created_at,
+            username: messageForBroadcast.username,
+            sender_name: messageForBroadcast.sender_name,
+            sender_avatar: messageForBroadcast.sender_avatar,
+            auto_triggered: true
+          },
+          timestamp: new Date().toISOString()
+        });
+        console.log('✅ Socket.IO broadcast completed');
+      }
+    } catch (socketError) {
+      console.error('❌ Socket.IO broadcast failed:', socketError);
+    }
+
+    // SSE broadcast (fallback for backward compatibility)
+    try {
+      const broadcaster = getBroadcaster();
+      await broadcaster.broadcastToRoom(roomId, {
+        room_id: roomId,
+        message_id: newMessage.id,
+        sender_id: userId,
+        message: newMessage.message,
+        translated_message: newMessage.translated_message,
+        target_language: newMessage.target_language,
+        created_at: newMessage.created_at,
+        sender_name: senderInfo[0]?.name || 'Unknown',
+        sender_avatar: senderInfo[0]?.avatar_url || '',
+        auto_triggered: true
+      }, userId);
+      console.log('✅ SSE broadcast completed');
+    } catch (sseError) {
+      console.error('❌ SSE broadcast failed:', sseError);
+    }
 
     // 🚀 VAPID PUSH NOTIFICATION - GUARANTEED INSTANT DELIVERY!
     console.log('🔔 Sending VAPID push notification for guaranteed delivery...');

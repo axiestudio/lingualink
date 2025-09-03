@@ -1,16 +1,59 @@
-// Service Worker for Push Notifications
-const CACHE_NAME = 'lingua-link-v1';
+// Service Worker for Push Notifications & PWA Features
+const CACHE_NAME = 'lingua-link-v1.0.0';
+const STATIC_CACHE = 'lingua-link-static-v1.0.0';
+const DYNAMIC_CACHE = 'lingua-link-dynamic-v1.0.0';
+
+// Files to cache immediately
+const STATIC_FILES = [
+  '/',
+  '/dashboard',
+  '/favicon.svg',
+  '/logo.svg',
+  '/manifest.json'
+];
 
 // Install event
 self.addEventListener('install', (event) => {
   console.log('🔧 Service Worker installing...');
-  self.skipWaiting();
+
+  event.waitUntil(
+    caches.open(STATIC_CACHE)
+      .then((cache) => {
+        console.log('📦 Caching static files');
+        return cache.addAll(STATIC_FILES);
+      })
+      .then(() => {
+        console.log('✅ Static files cached');
+        return self.skipWaiting();
+      })
+      .catch((error) => {
+        console.error('❌ Caching failed:', error);
+        return self.skipWaiting();
+      })
+  );
 });
 
-// Activate event
+// Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
-  console.log('✅ Service Worker activated');
-  event.waitUntil(self.clients.claim());
+  console.log('🚀 Service Worker activating...');
+
+  event.waitUntil(
+    caches.keys()
+      .then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cacheName) => {
+            if (cacheName !== STATIC_CACHE && cacheName !== DYNAMIC_CACHE) {
+              console.log('🗑️ Deleting old cache:', cacheName);
+              return caches.delete(cacheName);
+            }
+          })
+        );
+      })
+      .then(() => {
+        console.log('✅ Service Worker activated');
+        return self.clients.claim();
+      })
+  );
 });
 
 // Push event - Handle incoming push notifications
@@ -122,26 +165,90 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// Fetch event - Handle network requests
+// Fetch event - Handle network requests with advanced caching
 self.addEventListener('fetch', (event) => {
-  // Only handle same-origin requests
-  if (!event.request.url.startsWith(self.location.origin)) {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // Skip non-GET requests and external requests
+  if (request.method !== 'GET' || url.origin !== location.origin) {
     return;
   }
 
-  // Handle API requests for real-time messaging
-  if (event.request.url.includes('/api/messages')) {
+  // API requests - network first, cache fallback
+  if (url.pathname.startsWith('/api/')) {
     event.respondWith(
-      fetch(event.request).catch(() => {
-        // Store failed requests for background sync
-        console.log('📴 Message API request failed - storing for sync');
-        return new Response(
-          JSON.stringify({ error: 'Offline - will retry' }),
-          { status: 503, headers: { 'Content-Type': 'application/json' } }
-        );
-      })
+      fetch(request)
+        .then((response) => {
+          // Cache successful API responses
+          if (response.status === 200) {
+            const responseClone = response.clone();
+            caches.open(DYNAMIC_CACHE)
+              .then((cache) => cache.put(request, responseClone));
+          }
+          return response;
+        })
+        .catch(() => {
+          // Return cached version if available
+          return caches.match(request)
+            .then((cachedResponse) => {
+              if (cachedResponse) {
+                return cachedResponse;
+              }
+              // Store failed requests for background sync
+              console.log('📴 API request failed - storing for sync');
+              return new Response(
+                JSON.stringify({ error: 'Offline - will retry' }),
+                { status: 503, headers: { 'Content-Type': 'application/json' } }
+              );
+            });
+        })
     );
+    return;
   }
+
+  // Static files - cache first, network fallback
+  if (STATIC_FILES.some(file => url.pathname === file || url.pathname.startsWith('/_next/'))) {
+    event.respondWith(
+      caches.match(request)
+        .then((response) => {
+          if (response) {
+            return response;
+          }
+          return fetch(request)
+            .then((response) => {
+              const responseClone = response.clone();
+              caches.open(STATIC_CACHE)
+                .then((cache) => cache.put(request, responseClone));
+              return response;
+            });
+        })
+    );
+    return;
+  }
+
+  // All other requests - network first, cache fallback
+  event.respondWith(
+    fetch(request)
+      .then((response) => {
+        const responseClone = response.clone();
+        caches.open(DYNAMIC_CACHE)
+          .then((cache) => cache.put(request, responseClone));
+        return response;
+      })
+      .catch(() => {
+        return caches.match(request)
+          .then((response) => {
+            if (response) {
+              return response;
+            }
+            // Return offline page for navigation requests
+            if (request.mode === 'navigate') {
+              return caches.match('/');
+            }
+          });
+      })
+  );
 });
 
 console.log('🚀 Service Worker loaded and ready for push notifications!');

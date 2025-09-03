@@ -1,0 +1,29 @@
+# Exclude React Native mobile app from Next.js build
+mobile/
+mobile/**/*
+
+# Exclude other non-web files
+*.md
+README.md
+docs/
+*.log
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Exclude development files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Exclude build artifacts
+.next/
+out/
+build/
+dist/
+
+# Exclude dependencies
+node_modules/
