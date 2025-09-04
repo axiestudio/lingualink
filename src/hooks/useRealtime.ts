@@ -4,7 +4,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useUser } from '@clerk/nextjs';
 
 export interface RealtimeMessage {
-  type: 'new_message' | 'user_status' | 'connected';
+  type: 'new_message' | 'user_status' | 'user_profile_updated' | 'connected';
   payload: any;
   timestamp: string;
 }
@@ -12,6 +12,7 @@ export interface RealtimeMessage {
 export interface RealtimeCallbacks {
   onNewMessage?: (data: any) => void;
   onUserStatusChange?: (data: any) => void;
+  onUserProfileUpdated?: (data: any) => void;
   onConnected?: () => void;
   onDisconnected?: () => void;
   onError?: (error: any) => void;
@@ -62,6 +63,9 @@ export function useRealtime(callbacks: RealtimeCallbacks = {}) {
               break;
             case 'user_status':
               callbacks.onUserStatusChange?.(data.payload);
+              break;
+            case 'user_profile_updated':
+              callbacks.onUserProfileUpdated?.(data.payload);
               break;
             case 'connected':
               console.log('🎉 Real-time connection confirmed');

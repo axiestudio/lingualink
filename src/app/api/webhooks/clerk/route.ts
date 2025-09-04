@@ -220,8 +220,7 @@ async function handleUserDeleted(data: any) {
 // 📡 Broadcast user profile updates to real-time clients
 async function broadcastUserProfileUpdate(clerkId: string, updates: any) {
   try {
-    // This would integrate with your Socket.IO server
-    // For now, we'll use PostgreSQL NOTIFY for real-time updates
+    // 1. PostgreSQL NOTIFY for SSE clients
     await sql`
       SELECT pg_notify('user_profile_updated', json_build_object(
         'user_id', ${clerkId},
@@ -230,7 +229,12 @@ async function broadcastUserProfileUpdate(clerkId: string, updates: any) {
       )::text)
     `;
 
-    console.log(`📡 Broadcasted profile update for user: ${clerkId}`);
+    // 2. Socket.IO broadcast for real-time clients
+    const { getSocketManager } = await import('../../../../lib/socket-server');
+    const socketManager = getSocketManager();
+    socketManager.broadcastUserProfileUpdate(clerkId, updates);
+
+    console.log(`📡 Broadcasted profile update for user: ${clerkId} (PostgreSQL + Socket.IO)`);
   } catch (error) {
     console.error('❌ Error broadcasting profile update:', error);
   }

@@ -54,7 +54,20 @@ export default function ThreadedMessage({
       <div className={`flex items-start space-x-3 ${isOwn ? 'flex-row-reverse space-x-reverse' : ''}`}>
       {/* Avatar */}
       <div className={`flex-shrink-0 ${isOwn ? 'order-2' : 'order-1'}`}>
-        <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white text-sm font-medium">
+        {message.sender_avatar ? (
+          <img
+            src={message.sender_avatar}
+            alt={message.sender_name}
+            className="w-8 h-8 rounded-full object-cover border border-white shadow-sm"
+            onError={(e) => {
+              // Fallback to initials if image fails to load
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+              target.nextElementSibling?.classList.remove('hidden');
+            }}
+          />
+        ) : null}
+        <div className={`w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white text-sm font-medium ${message.sender_avatar ? 'hidden' : ''}`}>
           {message.sender_name?.charAt(0)?.toUpperCase() || '?'}
         </div>
       </div>

@@ -34,6 +34,26 @@ export async function initializeDatabase() {
     `;
     console.log('✅ Users table created/verified');
 
+    // 🔧 Add missing columns to existing users table if they don't exist
+    try {
+      // Check and add secondary_languages column
+      const secondaryLanguagesColumnCheck = await sql`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'users'
+        AND column_name = 'secondary_languages'
+      `;
+
+      if (secondaryLanguagesColumnCheck.length === 0) {
+        console.log('🔧 Adding missing secondary_languages column...');
+        await sql`ALTER TABLE users ADD COLUMN secondary_languages TEXT`;
+        console.log('✅ Added secondary_languages column');
+      }
+
+    } catch (columnError) {
+      console.warn('⚠️ Users column addition check failed:', columnError instanceof Error ? columnError.message : String(columnError));
+    }
+
     // Rooms table
     await sql`
       CREATE TABLE IF NOT EXISTS rooms (
@@ -436,7 +456,7 @@ export async function getUserConversations(userId: string) {
         other_user.username,
         other_user.name,
         other_user.avatar_url,
-        other_user.language,
+        other_user.language as language_preference,
         other_user.is_online,
         other_user.last_seen,
         latest_msg.message as last_message,

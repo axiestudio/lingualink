@@ -5,7 +5,7 @@ import { useUser } from '@clerk/nextjs';
 import { io, Socket } from 'socket.io-client';
 
 export interface SocketMessage {
-  type: 'new_message' | 'user_status_change' | 'user_typing';
+  type: 'new_message' | 'user_status_change' | 'user_typing' | 'user_profile_updated';
   payload: any;
   timestamp: string;
 }
@@ -14,6 +14,7 @@ export interface SocketCallbacks {
   onNewMessage?: (data: any) => void;
   onUserStatusChange?: (data: any) => void;
   onUserTyping?: (data: any) => void;
+  onUserProfileUpdated?: (data: any) => void;
   onConnected?: () => void;
   onDisconnected?: () => void;
   onError?: (error: any) => void;
@@ -46,17 +47,34 @@ export function useSocket(callbacks: SocketCallbacks = {}) {
     socketRef.current = socket;
 
     // Connection events
-    socket.on('connect', () => {
+    socket.on('connect', async () => {
       console.log('✅ Socket.IO connected:', socket.id);
       setIsConnected(true);
       reconnectAttempts.current = 0;
-      
-      // Authenticate user
-      socket.emit('authenticate', { 
-        userId: user.id,
-        token: 'dummy-token' // In production, use real JWT token
-      });
-      
+
+      try {
+        // Get Clerk session token
+        let sessionToken = null;
+        try {
+          // Use Clerk's session token method
+          sessionToken = user.id; // Use user ID as token for now
+        } catch (tokenError) {
+          console.warn('⚠️ Could not get session token:', tokenError);
+        }
+
+        // Authenticate user with Clerk user ID
+        socket.emit('authenticate', {
+          userId: user.id,
+          sessionToken: sessionToken
+        });
+      } catch (error) {
+        console.error('❌ Failed to authenticate with socket:', error);
+        socket.emit('authenticate', {
+          userId: user.id,
+          sessionToken: null
+        });
+      }
+
       callbacks.onConnected?.();
     });
 
@@ -89,6 +107,20 @@ export function useSocket(callbacks: SocketCallbacks = {}) {
     socket.on('user_typing', (data) => {
       console.log('⌨️ User typing:', data);
       callbacks.onUserTyping?.(data);
+    });
+
+    // Profile update events
+    socket.on('user_profile_updated', (data) => {
+      console.log('👤 User profile updated:', data);
+      callbacks.onUserProfileUpdated?.(data.payload);
+    });
+
+    // Session expiry handling
+    socket.on('session_expired', (data) => {
+      console.warn('⚠️ Session expired:', data);
+      setIsAuthenticated(false);
+      // Redirect to sign-in or show session expired message
+      window.location.href = '/sign-in?session_expired=true';
     });
 
     // Error handling
@@ -175,6 +207,25 @@ export function useSocket(callbacks: SocketCallbacks = {}) {
     }
   }, [isAuthenticated]);
 
+  // Broadcast profile update with acknowledgment for instant delivery
+  const broadcastProfileUpdate = useCallback((updates: any, callback?: (success: boolean) => void) => {
+    if (socketRef.current && isAuthenticated && user?.id) {
+      console.log(`👤 Broadcasting profile update for user: ${user.id}`, updates);
+
+      // Send with acknowledgment for guaranteed delivery
+      socketRef.current.emit('broadcast_profile_update',
+        { userId: user.id, updates },
+        (response: { success: boolean; delivered: number; error?: string }) => {
+          console.log(`✅ Profile update broadcast result:`, response);
+          callback?.(response.success);
+        }
+      );
+    } else {
+      console.warn('⚠️ Cannot broadcast profile update: socket not connected or not authenticated');
+      callback?.(false);
+    }
+  }, [isAuthenticated, user?.id]);
+
   // Initialize socket when user is available
   useEffect(() => {
     if (user && !socketRef.current) {
@@ -201,7 +252,8 @@ export function useSocket(callbacks: SocketCallbacks = {}) {
     leaveRoom,
     sendTypingStart,
     sendTypingStop,
-    broadcastMessage
+    broadcastMessage,
+    broadcastProfileUpdate
   };
 }
 

@@ -17,6 +17,8 @@ import { useDatabase } from '../../hooks/useDatabase';
 // import { useRealtimeMessages } from '../../hooks/useRealtime'; // Disabled - using Socket.IO instead
 import { useSocket } from '../../hooks/useSocket';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
+import { useOnlineStatus } from '../../hooks/useOnlineStatus';
+import { useProfileSync } from '../../hooks/useProfileSync';
 import FileUpload from '../../components/FileUpload';
 import FileMessage from '../../components/FileMessage';
 import MessageReply from '../../components/MessageReply';
@@ -65,6 +67,12 @@ export default function DashboardPage() {
   // 🚀 VAPID Push Notifications for Guaranteed Instant Delivery
   const pushNotifications = usePushNotifications();
 
+  // 🚀 SENIOR DEVELOPER: Proper online status management with Clerk
+  const { setOnline, setOffline } = useOnlineStatus();
+
+  // 🚀 REAL-TIME PROFILE SYNCHRONIZATION
+  const { manualSync: syncProfile } = useProfileSync();
+
   const [selectedConversation, setSelectedConversation] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [newMessage, setNewMessage] = useState('');
@@ -80,6 +88,7 @@ export default function DashboardPage() {
   });
   const [isSending, setIsSending] = useState(false);
   const [replyToMessage, setReplyToMessage] = useState<any>(null);
+  const [backgroundRefreshEnabled, setBackgroundRefreshEnabled] = useState(true);
 
   // Local conversations state to avoid reloading
   const [localConversations, setLocalConversations] = useState<any[]>([]);
@@ -91,6 +100,22 @@ export default function DashboardPage() {
   useEffect(() => {
     setLocalConversations(conversations);
   }, [conversations]);
+
+  // 🔄 BACKGROUND REFRESH MECHANISM - Silently refresh conversations when needed
+  const triggerBackgroundRefresh = useCallback(async () => {
+    if (!backgroundRefreshEnabled) return;
+
+    try {
+      console.log('🔄 Triggering background refresh...');
+
+      // Silently reload conversations in background
+      await loadConversations();
+
+      console.log('✅ Background refresh completed');
+    } catch (error) {
+      console.warn('⚠️ Background refresh failed:', error);
+    }
+  }, [backgroundRefreshEnabled, loadConversations]);
 
   // Load current user's language preference
   useEffect(() => {
@@ -527,10 +552,63 @@ export default function DashboardPage() {
     }
   }, [loadConversations]);
 
+  const handleUserProfileUpdate = useCallback((profileData: any) => {
+    console.log('👤 User profile updated:', profileData);
+    const { user_id, updates } = profileData;
+
+    // Update conversations list with new profile data
+    setLocalConversations((prev: any[]) => prev.map((conv: any) =>
+      conv.clerk_id === user_id
+        ? {
+            ...conv,
+            name: updates.name || conv.name,
+            avatar_url: updates.avatarUrl || conv.avatar_url,
+            language: updates.language || conv.language
+          }
+        : conv
+    ));
+
+    // Update selected conversation if it matches
+    if (selectedConversation && selectedConversation.clerk_id === user_id) {
+      setSelectedConversation((prev: any) => prev ? {
+        ...prev,
+        name: updates.name || prev.name,
+        avatar_url: updates.avatarUrl || prev.avatar_url,
+        language: updates.language || prev.language
+      } : null);
+    }
+
+    // Update search results for new conversations
+    setSearchResults((prev: any[]) => prev.map((user: any) =>
+      user.clerk_id === user_id
+        ? {
+            ...user,
+            name: updates.name || user.name,
+            avatar_url: updates.avatarUrl || user.avatar_url,
+            language: updates.language || user.language
+          }
+        : user
+    ));
+
+    // Update messages to reflect new sender names/avatars
+    setMessages((prev: any[]) => prev.map((msg: any) =>
+      msg.sender_clerk_id === user_id
+        ? {
+            ...msg,
+            sender_name: updates.name || msg.sender_name,
+            sender_avatar: updates.avatarUrl || msg.sender_avatar
+          }
+        : msg
+    ));
+
+    console.log(`✅ Updated profile data for user ${user_id} in real-time`);
+  }, [selectedConversation]);
+
   // Initialize Socket.IO connection (primary) and SSE (fallback)
   const { isConnected: socketConnected, isAuthenticated: socketAuth, joinRoom, leaveRoom, broadcastMessage } = useSocket({
     onNewMessage: handleNewMessage,
     onUserStatusChange: handleUserStatusChange,
+    onUserProfileUpdated: handleUserProfileUpdate,
     onConnected: () => console.log('🔌 Socket.IO connected successfully'),
     onDisconnected: () => console.log('🔌 Socket.IO disconnected'),
     onError: (error) => console.error('❌ Socket.IO error:', error)
@@ -630,21 +708,21 @@ export default function DashboardPage() {
       </SignedOut>
 
       <SignedIn>
-        <div className="h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex flex-col overflow-hidden">
+        <div className="h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-slate-800 flex flex-col overflow-hidden transition-colors duration-300">
 
           {/* Unified Header - Clean Single Header */}
-          <div className="bg-white/80 backdrop-blur-sm border-b border-slate-200/50 px-6 py-4">
+          <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200/50 dark:border-slate-700/50 px-6 py-4 transition-colors duration-300">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <div className="flex items-center space-x-3">
                   <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center">
                     <span className="text-white font-bold text-sm">LL</span>
                   </div>
-                  <h1 className="text-xl font-bold text-slate-900">Lingua Link</h1>
+                  <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">Lingua Link</h1>
                 </div>
                 <div className="flex items-center space-x-2">
                   <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="text-sm text-slate-600">Online</span>
+                  <span className="text-sm text-slate-600 dark:text-slate-400">Online</span>
                 </div>
               </div>
 
@@ -666,7 +744,7 @@ export default function DashboardPage() {
                 {/* Settings Button */}
                 <button
                   onClick={() => router.push('/settings')}
-                  className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 hover:border-slate-300 transition-colors duration-200"
+                  className="flex items-center space-x-2 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-colors duration-200"
                   title="Settings"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -684,7 +762,7 @@ export default function DashboardPage() {
           {/* Main Messaging Interface */}
           <div className="flex-1 flex overflow-hidden">
         {/* Conversations Sidebar */}
-        <div className="w-80 bg-white/80 backdrop-blur-sm border-r border-slate-200/50 flex flex-col">
+        <div className="w-80 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-r border-slate-200/50 dark:border-slate-700/50 flex flex-col transition-colors duration-300">
           {/* Enhanced Search Bar */}
           <div className="p-4 border-b border-slate-200/50">
             <div className="relative">
@@ -726,7 +804,20 @@ export default function DashboardPage() {
                     >
                       <div className="flex items-center space-x-3">
                         <div className="relative">
-                          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                          {user.avatar_url ? (
+                            <img
+                              src={user.avatar_url}
+                              alt={user.name}
+                              className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm"
+                              onError={(e) => {
+                                // Fallback to initials if image fails to load
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                target.nextElementSibling?.classList.remove('hidden');
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-semibold text-sm ${user.avatar_url ? 'hidden' : ''}`}>
                             {user.name.charAt(0).toUpperCase()}
                           </div>
                           {user.is_online && (
@@ -787,7 +878,20 @@ export default function DashboardPage() {
                   <div className="flex items-center space-x-3">
                     {/* Avatar */}
                     <div className="relative">
-                      <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-semibold">
+                      {conversation.avatar_url ? (
+                        <img
+                          src={conversation.avatar_url}
+                          alt={conversation.name}
+                          className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm"
+                          onError={(e) => {
+                            // Fallback to initials if image fails to load
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            target.nextElementSibling?.classList.remove('hidden');
+                          }}
+                        />
+                      ) : null}
+                      <div className={`w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-semibold ${conversation.avatar_url ? 'hidden' : ''}`}>
                         {conversation.name?.charAt(0)?.toUpperCase() || '?'}
                       </div>
                       {conversation.is_online && (
@@ -830,7 +934,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Main Chat Area */}
-        <div className="flex-1 flex flex-col bg-white/50 backdrop-blur-sm">
+        <div className="flex-1 flex flex-col bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm transition-colors duration-300">
           {selectedConversation ? (
             <>
           {/* Chat Header - Conversation Details Only */}
@@ -838,7 +942,20 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <div className="relative">
-                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-semibold">
+                  {selectedConversation.avatar_url ? (
+                    <img
+                      src={selectedConversation.avatar_url}
+                      alt={selectedConversation.name}
+                      className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm"
+                      onError={(e) => {
+                        // Fallback to initials if image fails to load
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        target.nextElementSibling?.classList.remove('hidden');
+                      }}
+                    />
+                  ) : null}
+                  <div className={`w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-semibold ${selectedConversation.avatar_url ? 'hidden' : ''}`}>
                     {selectedConversation.name?.charAt(0)?.toUpperCase() || '?'}
                   </div>
                   {selectedConversation.is_online && (

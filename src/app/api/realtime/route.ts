@@ -120,6 +120,7 @@ export async function GET(request: NextRequest) {
           // Listen to message notifications
           client.query('LISTEN new_message');
           client.query('LISTEN user_status');
+          client.query('LISTEN user_profile_updated');
 
           // Handle notifications
           client.on('notification', (msg) => {

@@ -1,5 +1,4 @@
 import { Server as SocketIOServer } from 'socket.io';
-import { createServer } from 'http';
 import { neon } from '@neondatabase/serverless';
 
 const sql = neon(process.env.DATABASE_URL!);
@@ -8,12 +7,24 @@ interface SocketUser {
   userId: string;
   socketId: string;
   lastSeen: number;
+  sessionToken?: string;
+  authenticatedAt?: number;
 }
 
 class SocketIOManager {
+  private static instance: SocketIOManager | null = null;
   private io: SocketIOServer | null = null;
   private userSockets = new Map<string, SocketUser>(); // userId -> SocketUser
   private socketUsers = new Map<string, string>(); // socketId -> userId
+  private sessionCleanupInterval: NodeJS.Timeout | null = null;
+
+  // Singleton pattern
+  public static getInstance(): SocketIOManager {
+    if (!SocketIOManager.instance) {
+      SocketIOManager.instance = new SocketIOManager();
+    }
+    return SocketIOManager.instance;
+  }
 
   // Initialize Socket.IO server
   initializeSocketIO(server: any) {
@@ -51,35 +62,52 @@ class SocketIOManager {
         console.error(`❌ Socket disconnect error for ${socket.id}:`, error);
       });
 
-      // Handle user authentication
-      socket.on('authenticate', async (data: { userId: string, token?: string }) => {
+      // Handle user authentication with Clerk session validation
+      socket.on('authenticate', async (data: { userId: string, sessionToken?: string }) => {
         try {
-          const { userId } = data;
+          const { userId, sessionToken } = data;
           console.log(`🔐 User authenticating: ${userId} (socket: ${socket.id})`);
 
-          // Store the mapping
+          // Validate Clerk session token
+          if (!sessionToken) {
+            console.error('❌ No session token provided');
+            socket.emit('authentication_error', { error: 'Session token required' });
+            return;
+          }
+
+          // Verify session with Clerk
+          const isValidSession = await this.validateClerkSession(userId, sessionToken);
+          if (!isValidSession) {
+            console.error('❌ Invalid Clerk session');
+            socket.emit('authentication_error', { error: 'Invalid session' });
+            return;
+          }
+
+          // Store the mapping with session info
           this.userSockets.set(userId, {
             userId,
             socketId: socket.id,
-            lastSeen: Date.now()
+            lastSeen: Date.now(),
+            sessionToken,
+            authenticatedAt: Date.now()
           });
           this.socketUsers.set(socket.id, userId);
-          
+
           // Join user-specific room
           socket.join(`user_${userId}`);
-          
-          // Update user online status
+
+          // Update user online status in database
           await this.updateUserOnlineStatus(userId, true);
-          
+
           // Send confirmation
           socket.emit('authenticated', { success: true, userId });
-          
+
           // Broadcast user online status to their contacts
           this.broadcastUserStatus(userId, true);
-          
-          console.log(`✅ User authenticated: ${userId}`);
+
+          console.log(`✅ User authenticated with valid Clerk session: ${userId}`);
           console.log(`📊 Total connected users: ${this.userSockets.size}`);
-          
+
         } catch (error) {
           console.error('❌ Authentication error:', error);
           socket.emit('authentication_error', { error: 'Authentication failed' });
@@ -172,6 +200,9 @@ class SocketIOManager {
       });
     });
 
+    // Start session cleanup interval
+    this.startSessionCleanup();
+
     console.log('✅ Socket.IO server initialized with enhanced features');
     return this.io;
   }
@@ -198,7 +229,7 @@ class SocketIOManager {
   }
 
   // Broadcast user status change
-  private broadcastUserStatus(userId: string, isOnline: boolean) {
+  public broadcastUserStatus(userId: string, isOnline: boolean) {
     if (!this.io) return;
 
     // Broadcast to all connected users (they can filter on client side)
@@ -215,12 +246,141 @@ class SocketIOManager {
   private async updateUserOnlineStatus(userId: string, isOnline: boolean) {
     try {
       await sql`
-        UPDATE users 
-        SET is_online = ${isOnline}, last_seen = CURRENT_TIMESTAMP 
+        UPDATE users
+        SET is_online = ${isOnline}, last_seen = CURRENT_TIMESTAMP
         WHERE clerk_id = ${userId}
       `;
     } catch (error) {
       console.error('❌ Error updating user online status:', error);
+    }
+  }
+
+  // Validate Clerk session token using Clerk's backend SDK
+  private async validateClerkSession(userId: string, sessionToken: string): Promise<boolean> {
+    try {
+      // Use Clerk's backend SDK to verify the session token
+      const { createClerkClient } = await import('@clerk/backend');
+      const clerkClient = createClerkClient({
+        secretKey: process.env.CLERK_SECRET_KEY!
+      });
+
+      // Get session information
+      const session = await clerkClient.sessions.getSession(sessionToken);
+
+      if (!session || session.userId !== userId) {
+        console.error('❌ Session validation failed: invalid session or user mismatch');
+        return false;
+      }
+
+      // Check if session is active
+      if (session.status !== 'active') {
+        console.error('❌ Session validation failed: session not active');
+        return false;
+      }
+
+      // Check if session is expired
+      const now = new Date();
+      if (session.expireAt && new Date(session.expireAt) < now) {
+        console.error('❌ Session validation failed: session expired');
+        return false;
+      }
+
+      console.log(`✅ Clerk session validated for user: ${userId}`);
+      return true;
+
+    } catch (error) {
+      console.error('❌ Error validating Clerk session:', error);
+      // If we can't validate, assume invalid for security
+      return false;
+    }
+  }
+
+  // Start periodic session cleanup
+  private startSessionCleanup() {
+    // Clean up expired sessions every 5 minutes
+    this.sessionCleanupInterval = setInterval(async () => {
+      console.log('🧹 Starting session cleanup...');
+      await this.cleanupExpiredSessions();
+    }, 5 * 60 * 1000); // 5 minutes
+
+    console.log('✅ Session cleanup interval started');
+  }
+
+  // Clean up expired or invalid sessions
+  private async cleanupExpiredSessions() {
+    const now = Date.now();
+    const expiredUsers: string[] = [];
+
+    for (const [userId, socketUser] of this.userSockets.entries()) {
+      try {
+        // Check if session is older than 24 hours (force revalidation)
+        const sessionAge = now - (socketUser.authenticatedAt || 0);
+        const maxSessionAge = 24 * 60 * 60 * 1000; // 24 hours
+
+        if (sessionAge > maxSessionAge && socketUser.sessionToken) {
+          // Revalidate session with Clerk
+          const isValid = await this.validateClerkSession(userId, socketUser.sessionToken);
+
+          if (!isValid) {
+            console.log(`🧹 Marking user ${userId} as offline due to invalid session`);
+            expiredUsers.push(userId);
+          } else {
+            // Update authentication timestamp
+            socketUser.authenticatedAt = now;
+          }
+        }
+      } catch (error) {
+        console.error(`❌ Error validating session for user ${userId}:`, error);
+        expiredUsers.push(userId);
+      }
+    }
+
+    // Clean up expired users
+    for (const userId of expiredUsers) {
+      await this.forceUserOffline(userId);
+    }
+
+    if (expiredUsers.length > 0) {
+      console.log(`🧹 Cleaned up ${expiredUsers.length} expired sessions`);
+    }
+  }
+
+  // Force user offline and clean up their connection
+  private async forceUserOffline(userId: string) {
+    const socketUser = this.userSockets.get(userId);
+
+    if (socketUser) {
+      try {
+        // Update database status
+        await this.updateUserOnlineStatus(userId, false);
+
+        // Broadcast offline status
+        this.broadcastUserStatus(userId, false);
+
+        // Disconnect the socket
+        const socket = this.io?.sockets.sockets.get(socketUser.socketId);
+        if (socket) {
+          socket.emit('session_expired', { reason: 'Session expired or invalid' });
+          socket.disconnect(true);
+        }
+
+        // Clean up mappings
+        this.userSockets.delete(userId);
+        this.socketUsers.delete(socketUser.socketId);
+
+        console.log(`🧹 Forced user ${userId} offline due to session expiry`);
+      } catch (error) {
+        console.error(`❌ Error forcing user ${userId} offline:`, error);
+      }
+    }
+  }
+
+  // Stop session cleanup
+  private stopSessionCleanup() {
+    if (this.sessionCleanupInterval) {
+      clearInterval(this.sessionCleanupInterval);
+      this.sessionCleanupInterval = null;
+      console.log('🛑 Session cleanup interval stopped');
     }
   }
 
@@ -247,20 +407,39 @@ class SocketIOManager {
     console.log(`📤 Sent ${event} to user ${userId}`);
   }
 
+  // Broadcast user profile update to all connected clients
+  broadcastUserProfileUpdate(userId: string, updates: any) {
+    if (!this.io) return;
+
+    console.log(`📡 Broadcasting profile update for user ${userId} via Socket.IO`);
+
+    try {
+      // Broadcast to all connected clients (they'll filter based on their needs)
+      this.io.emit('user_profile_updated', {
+        type: 'user_profile_updated',
+        payload: {
+          user_id: userId,
+          updates: updates,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+      console.log(`✅ Profile update broadcasted for user ${userId}`);
+
+    } catch (error) {
+      console.error('❌ Error broadcasting profile update:', error);
+    }
+  }
+
   // Get Socket.IO instance
   getIO(): SocketIOServer | null {
     return this.io;
   }
 }
 
-// Singleton instance
-let socketManager: SocketIOManager | null = null;
-
+// Export the singleton instance getter
 export function getSocketManager(): SocketIOManager {
-  if (!socketManager) {
-    socketManager = new SocketIOManager();
-  }
-  return socketManager;
+  return SocketIOManager.getInstance();
 }
 
 export { SocketIOManager };

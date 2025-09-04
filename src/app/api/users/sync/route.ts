@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { getOrCreateUser } from '../../../actions';
+import { getBroadcaster } from '@/lib/realtime-broadcaster';
 
 // Sync user with database
 export async function POST(request: NextRequest) {
@@ -36,9 +37,42 @@ export async function POST(request: NextRequest) {
 
     const user = await getOrCreateUser(userData);
 
-    return NextResponse.json({ 
-      success: true, 
-      user 
+    // 🚀 REAL-TIME PROFILE SYNC: Broadcast profile update to all connected users
+    try {
+      console.log('📡 Broadcasting profile update for user:', clerkId);
+
+      // Prepare profile update data
+      const profileUpdate = {
+        user_id: clerkId,
+        updates: {
+          name: name,
+          avatarUrl: avatarUrl,
+          username: username,
+          email: email
+        }
+      };
+
+      // Note: We'll use Socket.IO for real-time broadcasting instead of the broadcaster
+      // The client will handle the Socket.IO broadcast when this sync completes
+      console.log('✅ Profile sync completed, client will handle real-time broadcast');
+
+    } catch (broadcastError) {
+      console.error('⚠️ Failed to broadcast profile update (non-critical):', broadcastError);
+      // Don't fail the sync if broadcast fails
+    }
+
+    return NextResponse.json({
+      success: true,
+      user,
+      profileUpdate: {
+        user_id: clerkId,
+        updates: {
+          name: name,
+          avatarUrl: avatarUrl,
+          username: username,
+          email: email
+        }
+      }
     });
   } catch (error) {
     console.error('Error syncing user:', error);

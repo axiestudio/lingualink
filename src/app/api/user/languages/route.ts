@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { neon } from '@neondatabase/serverless';
+import { SUPPORTED_LANGUAGES } from '@/lib/translation';
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -59,15 +60,15 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Primary language is required' }, { status: 400 });
     }
 
-    // Validate languages
-    const supportedLanguages = ['en', 'es', 'fr', 'de', 'it', 'pt', 'ru', 'ja', 'ko', 'zh', 'ar', 'hi'];
+    // Validate languages using the centralized SUPPORTED_LANGUAGES list
+    const supportedLanguageCodes = SUPPORTED_LANGUAGES.map(lang => lang.code);
     
-    if (!supportedLanguages.includes(primaryLanguage)) {
+    if (!supportedLanguageCodes.includes(primaryLanguage)) {
       return NextResponse.json({ error: 'Unsupported primary language' }, { status: 400 });
     }
 
     for (const lang of secondaryLanguages) {
-      if (!supportedLanguages.includes(lang)) {
+      if (!supportedLanguageCodes.includes(lang)) {
         return NextResponse.json({ error: `Unsupported secondary language: ${lang}` }, { status: 400 });
       }
     }

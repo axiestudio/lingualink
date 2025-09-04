@@ -141,6 +141,66 @@ app.prepare().then(() => {
       }
     });
 
+    // Handle profile update broadcasting
+    socket.on('broadcast_profile_update', (data, callback) => {
+      const { userId, updates } = data;
+      const senderUserId = socketUsers.get(socket.id);
+
+      console.log(`👤 Broadcasting profile update for user ${userId}:`, updates);
+
+      // Verify the user is updating their own profile
+      if (senderUserId !== userId) {
+        console.warn(`⚠️ User ${senderUserId} tried to update profile for ${userId}`);
+        if (callback) callback({ success: false, error: 'Unauthorized' });
+        return;
+      }
+
+      try {
+        // Broadcast profile update to all connected users
+        const profileUpdatePayload = {
+          type: 'user_profile_updated',
+          payload: {
+            user_id: userId,
+            updates: updates
+          },
+          timestamp: new Date().toISOString()
+        };
+
+        // Send to all connected users except the sender
+        let deliveredCount = 0;
+        for (const [socketId, connectedUserId] of socketUsers.entries()) {
+          if (connectedUserId !== senderUserId) {
+            const targetSocket = io.sockets.sockets.get(socketId);
+            if (targetSocket) {
+              targetSocket.emit('user_profile_updated', profileUpdatePayload);
+              deliveredCount++;
+              console.log(`📨 Profile update delivered to user: ${connectedUserId}`);
+            }
+          }
+        }
+
+        console.log(`✅ Profile update broadcast complete: ${deliveredCount} recipients`);
+
+        // Send acknowledgment back to sender
+        if (callback) {
+          callback({
+            success: true,
+            delivered: deliveredCount,
+            message: 'Profile update broadcasted successfully'
+          });
+        }
+
+      } catch (error) {
+        console.error('❌ Error broadcasting profile update:', error);
+        if (callback) {
+          callback({
+            success: false,
+            error: 'Failed to broadcast profile update'
+          });
+        }
+      }
+    });
+
     // Handle real-time message broadcasting with acknowledgments
     socket.on('broadcast_message', (data, callback) => {
       const { roomId, messageData, senderUserId } = data;
