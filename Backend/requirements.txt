@@ -48,7 +48,7 @@ flake8>=6.0.0
 
 # Optional: For Apple Silicon optimization
 # Uncomment if running on Apple Silicon (M1/M2/M3)
-# accelerate>=0.24.0
+# (accelerate is now included above as required dependency)
 
 # Production deployment (optional)
 gunicorn>=21.2.0
