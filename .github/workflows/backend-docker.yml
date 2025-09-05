@@ -61,6 +61,22 @@ jobs:
         python -c "from app.services.translation_service import TranslationService; print('✅ Translation service imports')"
 
     - name: 🧪 Test frontend
+      env:
+        # Provide dummy environment variables for build-time
+        DATABASE_URL: 'postgresql://dummy:dummy@localhost:5432/dummy'
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: 'pk_test_dummy'
+        CLERK_SECRET_KEY: 'sk_test_dummy'
+        CLERK_WEBHOOK_SECRET: 'whsec_dummy'
+        CLERK_JWT_ISSUER_DOMAIN: 'https://dummy.clerk.accounts.dev'
+        NEXT_PUBLIC_CLERK_SIGN_IN_URL: '/sign-in'
+        NEXT_PUBLIC_CLERK_SIGN_UP_URL: '/sign-up'
+        NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: '/dashboard'
+        NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL: '/dashboard'
+        FEATHERLESS_API_KEY: 'dummy_key'
+        OPENAI_API_KEY: 'sk-dummy'
+        NEXT_PUBLIC_VAPID_PUBLIC_KEY: 'dummy_vapid_public'
+        VAPID_PRIVATE_KEY: 'dummy_vapid_private'
+        VAPID_SUBJECT: 'mailto:test@example.com'
       run: |
         cd lingualink
         npm run build

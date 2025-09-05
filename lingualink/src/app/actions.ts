@@ -4,12 +4,19 @@ import { neon } from "@neondatabase/serverless";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
-const sql = neon(process.env.DATABASE_URL!);
+// Initialize database connection with build-time safety
+const sql = process.env.DATABASE_URL ? neon(process.env.DATABASE_URL) : null;
 
 // 🔒 SECURITY: Initialize database with proper error handling and concurrency control
 export async function initializeDatabase() {
   try {
     console.log('🔧 Initializing database with security enhancements...');
+
+    // Skip database operations during build time
+    if (!sql) {
+      console.log('⚠️ Skipping database initialization - no connection available');
+      return;
+    }
 
     // Test database connection first
     await sql`SELECT 1 as test`;
@@ -301,6 +308,7 @@ export async function initializeDatabase() {
 // Get or create user from Clerk data
 export async function getOrCreateUser(clerkUser: any) {
   try {
+    if (!sql) return null;
     const { userId } = await auth();
     if (!userId) {
       redirect("/sign-in");
@@ -447,6 +455,7 @@ export async function getOrCreateRoom(currentUserId: string, targetUserId: strin
 // Get user's conversations
 export async function getUserConversations(userId: string) {
   try {
+    if (!sql) return [];
     const conversations = await sql`
       SELECT
         r.room_id,

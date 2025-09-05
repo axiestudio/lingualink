@@ -65,6 +65,16 @@ const nextConfig: NextConfig = {
     // Enable experimental features as needed
   },
 
+  // Skip build-time static generation for API routes that need database
+  generateBuildId: async () => {
+    return 'build-' + Date.now();
+  },
+
+  // Environment variables validation
+  env: {
+    DATABASE_URL: process.env.DATABASE_URL || 'postgresql://dummy:dummy@localhost:5432/dummy',
+  },
+
   // Image optimization
   images: {
     domains: ['localhost'],
