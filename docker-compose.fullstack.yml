@@ -1,0 +1,136 @@
+# 🚀 LinguaLink AI - Fullstack Docker Compose
+# Complete Next.js Frontend + FastAPI Backend in single container
+
+version: '3.8'
+
+services:
+  # ============================================================================
+  # Fullstack Application (Frontend + Backend + AI)
+  # ============================================================================
+  lingualink-fullstack:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: lingualink-fullstack
+    ports:
+      - "80:80"      # Nginx reverse proxy
+      - "3000:3000"  # Frontend (direct access)
+      - "8000:8000"  # Backend (direct access)
+    environment:
+      # Backend Configuration
+      - DEBUG=false
+      - HOST=0.0.0.0
+      - PORT=8000
+      
+      # Model Configuration
+      - MODEL_NAME=facebook/nllb-200-distilled-600M
+      - MODEL_CACHE_DIR=/app/models
+      - DEVICE=auto
+      - MAX_LENGTH=512
+      
+      # Performance Configuration
+      - BATCH_SIZE=2
+      - ENABLE_CACHING=true
+      - CACHE_TTL=7200
+      - CACHE_MAX_SIZE=2000
+      
+      # Memory Management
+      - TORCH_COMPILE=true
+      - LOW_MEMORY_MODE=false
+      
+      # API Configuration
+      - MAX_TEXT_LENGTH=5000
+      - RATE_LIMIT_PER_MINUTE=60
+      
+      # Security Configuration
+      - ENABLE_RATE_LIMITING=true
+      - ENABLE_API_KEY_AUTH=false
+      
+      # Frontend Configuration
+      - NEXT_PUBLIC_BACKEND_TRANSLATION_URL=http://localhost:8000
+      - ENABLE_LOCAL_BACKEND=true
+      
+      # Database (from environment or secrets)
+      - DATABASE_URL=${DATABASE_URL:-postgresql://localhost:5432/lingualink}
+      
+    volumes:
+      # Persistent model storage
+      - model-data:/app/models
+      # Logs
+      - ./logs:/var/log
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health", "&&", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    
+    restart: unless-stopped
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: '4.0'
+        reservations:
+          memory: 4G
+          cpus: '2.0'
+
+  # ============================================================================
+  # Database (Optional - for development)
+  # ============================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: lingualink-postgres
+    environment:
+      - POSTGRES_DB=lingualink
+      - POSTGRES_USER=lingualink
+      - POSTGRES_PASSWORD=lingualink_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lingualink"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # ============================================================================
+  # Redis Cache (Optional)
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: lingualink-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+# ============================================================================
+# Networks
+# ============================================================================
+networks:
+  default:
+    name: lingualink-network
+
+# ============================================================================
+# Volumes
+# ============================================================================
+volumes:
+  model-data:
+    driver: local
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
