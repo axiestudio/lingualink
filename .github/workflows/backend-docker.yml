@@ -4,14 +4,14 @@ on:
   push:
     branches: [ main, backend ]
     paths:
-      - 'backend/**'
+      - 'Backend/**'
       - 'lingualink/**'
       - 'Dockerfile'
       - '.github/workflows/backend-docker.yml'
   pull_request:
     branches: [ main ]
     paths:
-      - 'backend/**'
+      - 'Backend/**'
       - 'lingualink/**'
 
 env:
@@ -45,7 +45,7 @@ jobs:
 
     - name: 📦 Install backend dependencies
       run: |
-        cd backend
+        cd Backend
         pip install -r requirements.txt
 
     - name: 📦 Install frontend dependencies
@@ -55,7 +55,7 @@ jobs:
 
     - name: 🧪 Test backend
       run: |
-        cd backend
+        cd Backend
         python -c "import app.core.config; print('✅ Backend config loads')"
         python -c "import app.models.translation; print('✅ Backend models load')"
         python -c "from app.services.translation_service import TranslationService; print('✅ Translation service imports')"

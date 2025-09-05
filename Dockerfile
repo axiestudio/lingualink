@@ -18,21 +18,21 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy backend requirements for model downloading
-COPY backend/requirements.txt backend/
-COPY backend/app/core/config.py backend/app/core/
-COPY backend/app/core/__init__.py backend/app/core/
-COPY backend/app/__init__.py backend/app/
+COPY Backend/requirements.txt Backend/
+COPY Backend/app/core/config.py Backend/app/core/
+COPY Backend/app/core/__init__.py Backend/app/core/
+COPY Backend/app/__init__.py Backend/app/
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r backend/requirements.txt
+RUN pip install --no-cache-dir -r Backend/requirements.txt
 
 # Copy model download script
-COPY backend/scripts/download_models.py backend/scripts/
+COPY Backend/scripts/download_models.py Backend/scripts/
 
 # Download models (this layer will be cached)
 ENV MODEL_CACHE_DIR=/app/models
 ENV MODEL_NAME=facebook/nllb-200-distilled-600M
-RUN python backend/scripts/download_models.py
+RUN python Backend/scripts/download_models.py
 
 # ============================================================================
 # Stage 2: Frontend Build (Node.js build stage)
@@ -78,14 +78,14 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 WORKDIR /app
 
 # Copy Python requirements and install dependencies
-COPY backend/requirements.txt backend/
-RUN pip install --no-cache-dir -r backend/requirements.txt
+COPY Backend/requirements.txt Backend/
+RUN pip install --no-cache-dir -r Backend/requirements.txt
 
 # Copy models from model-downloader stage
 COPY --from=model-downloader /app/models ./models
 
 # Copy backend application code
-COPY backend/ ./backend/
+COPY Backend/ ./Backend/
 
 # Copy built frontend from frontend-builder stage
 COPY --from=frontend-builder /app/frontend/.next ./frontend/.next
