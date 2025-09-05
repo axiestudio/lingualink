@@ -15,7 +15,7 @@ export async function initializeDatabase() {
     // Skip database operations during build time
     if (!sql) {
       console.log('⚠️ Skipping database initialization - no connection available');
-      return;
+      return { success: false, error: 'Database connection not available' };
     }
 
     // Test database connection first
@@ -381,6 +381,7 @@ function generateRoomIdSync(userId1: string, userId2: string): string {
 // Get or create a room between two users
 export async function getOrCreateRoom(currentUserId: string, targetUserId: string) {
   try {
+    if (!sql) return null;
     const roomId = generateRoomIdSync(currentUserId, targetUserId);
     console.log(`🔍 Looking for room between ${currentUserId} and ${targetUserId}`);
     console.log(`🏠 Generated room ID: ${roomId}`);
@@ -506,6 +507,7 @@ export async function getUserConversations(userId: string) {
 // Search users by username or name
 export async function searchUsers(query: string, currentUserId: string) {
   try {
+    if (!sql) return [];
     const users = await sql`
       SELECT clerk_id, username, name, avatar_url, language, is_online, last_seen
       FROM users
@@ -527,6 +529,7 @@ export async function searchUsers(query: string, currentUserId: string) {
 // Update user language preference
 export async function updateUserLanguage(clerkId: string, language: string) {
   try {
+    if (!sql) return { success: false, error: 'Database not available' };
     const result = await sql`
       UPDATE users
       SET language = ${language}, updated_at = CURRENT_TIMESTAMP
@@ -545,6 +548,7 @@ export async function updateUserLanguage(clerkId: string, language: string) {
 // Get user language preference
 export async function getUserLanguage(clerkId: string) {
   try {
+    if (!sql) return { language: 'en' };
     console.log("📋 Getting language preference for user:", clerkId);
     const result = await sql`
       SELECT language FROM users WHERE clerk_id = ${clerkId}
@@ -569,6 +573,7 @@ export async function sendMessage(
   replyToMessageId?: number
 ) {
   try {
+    if (!sql) return null;
     // 🔒 SECURITY: Log message sending with privacy protection
     console.log("📤 Sending message:", {
       roomId: roomId.substring(0, 20) + '...',
@@ -610,6 +615,7 @@ export async function sendMessage(
 // Get messages for a room
 export async function getRoomMessages(roomId: string, limit: number = 50) {
   try {
+    if (!sql) return [];
     console.log("📥 Fetching messages for room:", roomId);
 
     // Check if reply_to_message_id column exists
@@ -688,6 +694,7 @@ export async function getRoomMessages(roomId: string, limit: number = 50) {
 // Update user online status
 export async function updateUserOnlineStatus(userId: string, isOnline: boolean) {
   try {
+    if (!sql) return;
     await sql`
       UPDATE users
       SET is_online = ${isOnline},
@@ -706,6 +713,7 @@ export async function updateUserOnlineStatus(userId: string, isOnline: boolean) 
 // Get user by clerk ID
 export async function getUserByClerkId(clerkId: string) {
   try {
+    if (!sql) return null;
     const user = await sql`
       SELECT * FROM users WHERE clerk_id = ${clerkId}
     `;
@@ -720,6 +728,7 @@ export async function getUserByClerkId(clerkId: string) {
 // Mark messages as read (update user's last seen for a room)
 export async function markMessagesAsRead(userId: string, roomId: string) {
   try {
+    if (!sql) return;
     // Update user's last seen timestamp
     await sql`
       UPDATE users

@@ -169,6 +169,10 @@ export async function POST(request: NextRequest) {
 
     const newMessage = await sendMessage(roomId, userId, sanitizedMessage, translatedMessage, targetLanguage, replyToMessageId);
 
+    if (!newMessage) {
+      return NextResponse.json({ error: 'Failed to send message' }, { status: 500 });
+    }
+
     // Get sender info for real-time broadcast
     const senderInfo = await sql`
       SELECT username, name, avatar_url
