@@ -18,6 +18,9 @@ protobuf>=3.20.0,<4.0.0
 # Hugging Face Hub for model downloading
 huggingface-hub>=0.19.0,<0.20.0
 
+# Accelerate for efficient model loading (REQUIRED for NLLB-200)
+accelerate>=0.24.0
+
 # System monitoring and performance
 psutil>=5.9.0
 nvidia-ml-py3>=7.352.0  # For NVIDIA GPU monitoring (optional)
