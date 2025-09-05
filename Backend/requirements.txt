@@ -1,0 +1,86 @@
+# 🚀 LinguaLink AI Backend - Requirements
+# Advanced local machine translation using Meta's NLLB-200 model
+# Fully offline capable with GPU acceleration support
+
+# Core FastAPI and Web Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Machine Learning and NLP
+torch>=2.0.0,<2.2.0
+transformers>=4.35.0,<4.37.0
+tokenizers>=0.15.0,<0.16.0
+sentencepiece>=0.1.99
+protobuf>=3.20.0,<4.0.0
+
+# Hugging Face Hub for model downloading
+huggingface-hub>=0.19.0,<0.20.0
+
+# System monitoring and performance
+psutil>=5.9.0
+nvidia-ml-py3>=7.352.0  # For NVIDIA GPU monitoring (optional)
+
+# Caching and optimization
+cachetools>=5.3.0
+
+# HTTP and networking
+httpx>=0.25.0
+aiofiles>=23.2.0
+
+# Logging and monitoring
+structlog>=23.2.0
+
+# Development and testing (optional, for development)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+isort>=5.12.0
+flake8>=6.0.0
+
+# Optional: For advanced GPU acceleration
+# Uncomment if you have NVIDIA GPU and want maximum performance
+# nvidia-cublas-cu11>=11.10.3.66
+# nvidia-cuda-nvrtc-cu11>=11.7.99
+# nvidia-cuda-runtime-cu11>=11.7.99
+# nvidia-cudnn-cu11>=8.5.0.96
+
+# Optional: For Apple Silicon optimization
+# Uncomment if running on Apple Silicon (M1/M2/M3)
+# accelerate>=0.24.0
+
+# Production deployment (optional)
+gunicorn>=21.2.0
+supervisor>=4.2.5
+
+# Environment management
+python-dotenv>=1.0.0
+
+# Data validation and serialization
+orjson>=3.9.0  # Faster JSON serialization
+
+# Async utilities
+asyncio-throttle>=1.0.2
+
+# Memory profiling (development only)
+memory-profiler>=0.61.0
+
+# Security
+cryptography>=41.0.0
+
+# CORS and middleware
+python-multipart>=0.0.6
+
+# Optional: Database support (if you want to add persistent caching)
+# sqlalchemy>=2.0.0
+# aiosqlite>=0.19.0
+
+# Optional: Redis support (for distributed caching)
+# redis>=5.0.0
+# aioredis>=2.0.0
+
+# Optional: Monitoring and metrics
+# prometheus-client>=0.19.0
+# opentelemetry-api>=1.21.0
+# opentelemetry-sdk>=1.21.0

@@ -1,0 +1,114 @@
+# 🚀 LinguaLink AI Backend - Docker Compose Configuration
+# Local development and testing setup
+
+version: '3.8'
+
+services:
+  # ============================================================================
+  # Backend Service
+  # ============================================================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: lingualink-backend-dev
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=true
+      - HOST=0.0.0.0
+      - PORT=8000
+      - MODEL_CACHE_DIR=/app/models
+      - DEVICE=cpu  # Use CPU for development
+      - ENABLE_CACHING=true
+      - LOG_LEVEL=DEBUG
+    volumes:
+      # Mount source code for development
+      - ./app:/app/app
+      - ./main.py:/app/main.py
+      - ./start.py:/app/start.py
+      # Mount models directory for persistence
+      - ./models:/app/models
+      # Mount logs directory
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "scripts/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - lingualink-network
+
+  # ============================================================================
+  # Redis Cache (Optional)
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: lingualink-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - lingualink-network
+
+  # ============================================================================
+  # Monitoring (Optional)
+  # ============================================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: lingualink-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - lingualink-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: lingualink-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    restart: unless-stopped
+    networks:
+      - lingualink-network
+
+# ============================================================================
+# Networks
+# ============================================================================
+networks:
+  lingualink-network:
+    driver: bridge
+
+# ============================================================================
+# Volumes
+# ============================================================================
+volumes:
+  redis-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
