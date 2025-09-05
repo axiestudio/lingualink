@@ -1,0 +1,65 @@
+Axie Studio – Din Digitala Receptionist
+
+Axie Studio är ett svenskt techföretag som utvecklar framtidens kundtjänstlösningar med hjälp av AI. Deras tjänst, AI Receptionist, hjälper företag att ge snabb, personlig och tillgänglig service – dygnet runt.
+
+💡 Vad gör en AI-receptionist?
+
+En smart digital assistent som:
+
+Svarar på kunders frågor direkt
+
+Hanterar bokningar och tidsreservationer
+
+Ger information om priser, tjänster och tillgänglighet
+
+Lär sig och förbättras med varje interaktion
+
+Anpassad för branscher som:
+
+Restauranger – Bordsbokningar, menyfrågor, allergier
+
+Skönhetssalonger – Tidsbokningar, behandlingstips, produktrekommendationer
+
+Trafikskolor – Lektioner, teoriprov, priser
+
+Bibliotek – Boklån, rumsbokningar, evenemang
+
+🚀 Fördelar:
+
+Tillgänglig 24/7 – Inga väntetider
+
+Svar på under 30 sekunder
+
+Upp till 70 % kostnadsbesparing
+
+95 % kundnöjdhet
+
+GDPR-säker
+
+Sömlös integration med era system (API, Webhooks, Google Kalender)
+
+💰 Prisplaner:
+
+Basic: 995 kr/månad – Enkel chatbot med grundläggande funktioner
+
+Intelligent: Full setup, obegränsade konversationer, anpassad design, avancerad analys & integrationer
+
+⚙️ Så fungerar det:
+
+Konsultation – Vi förstår dina behov
+
+Konfiguration – Vi kopplar upp AI:n mot dina system
+
+Testning – Vi testar och optimerar
+
+Live – Din AI-receptionist är redo att hjälpa dina kunder!
+
+📞 Kontakt:
+
+🌐 www.axiestudio.se
+
+📧 stefan@axiestudio.se
+
+📱 +46 735 132 620
+
+📍 Norra Strandgatan 3, Jönköping
