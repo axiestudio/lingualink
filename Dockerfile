@@ -37,7 +37,7 @@ RUN python Backend/scripts/download_models.py
 # ============================================================================
 # Stage 2: Frontend Build (Node.js build stage)
 # ============================================================================
-FROM node:18-alpine as frontend-builder
+FROM node:20-alpine as frontend-builder
 
 # Declare build arguments for environment variables
 ARG DATABASE_URL
@@ -73,8 +73,8 @@ WORKDIR /app/frontend
 # Copy frontend package files
 COPY lingualink/package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install ALL dependencies (including dev dependencies for build)
+RUN npm ci
 
 # Copy frontend source code
 COPY lingualink/ ./
@@ -122,7 +122,7 @@ RUN apt-get update && apt-get install -y \
     nginx \
     supervisor \
     # Node.js for frontend runtime
-    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
