@@ -35,7 +35,7 @@ export default function SmoothMessageTransition({
       y: 0,
       scale: 1,
       transition: {
-        type: "spring",
+        type: "spring" as const,
         stiffness: 500,
         damping: 30,
         mass: 1
@@ -63,7 +63,7 @@ export default function SmoothMessageTransition({
       y: 0,
       scale: 1,
       transition: {
-        type: "spring",
+        type: "spring" as const,
         stiffness: 400,
         damping: 25,
         mass: 0.8
@@ -73,7 +73,7 @@ export default function SmoothMessageTransition({
       scale: [1, 1.02, 1],
       transition: {
         duration: 0.3,
-        ease: "easeInOut"
+        ease: "easeInOut" as const
       }
     }
   };
@@ -85,7 +85,7 @@ export default function SmoothMessageTransition({
       transition: {
         duration: 1.5,
         repeat: Infinity,
-        ease: "easeInOut"
+        ease: "easeInOut" as const
       }
     }
   };
@@ -144,7 +144,7 @@ export function TranslationUpdateWrapper({
       height: 'auto',
       y: 0,
       transition: {
-        type: "spring",
+        type: "spring" as const,
         stiffness: 300,
         damping: 30
       }
@@ -154,7 +154,7 @@ export function TranslationUpdateWrapper({
       scale: [0.98, 1],
       transition: {
         duration: 0.4,
-        ease: "easeOut"
+        ease: "easeOut" as const
       }
     }
   };
@@ -224,7 +224,7 @@ export function TranslationProgress({ progress, isVisible }: TranslationProgress
               className="bg-blue-500 h-1 rounded-full"
               initial={{ width: 0 }}
               animate={{ width: `${progress}%` }}
-              transition={{ duration: 0.3, ease: "easeOut" }}
+              transition={{ duration: 0.3, ease: "easeOut" as const }}
             />
           </div>
           <div className="text-xs text-gray-500 mt-1">

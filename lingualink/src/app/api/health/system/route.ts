@@ -9,16 +9,21 @@ export async function GET() {
       status: 'healthy',
       timestamp: new Date().toISOString(),
       services: {
-        database: { status: 'unknown' },
-        pushNotifications: { status: 'unknown' },
-        serviceWorker: { status: 'unknown' },
-        translation: { status: 'unknown' }
+        database: { status: 'unknown' } as any,
+        pushNotifications: { status: 'unknown' } as any,
+        serviceWorker: { status: 'unknown' } as any,
+        translation: { status: 'unknown' } as any
       },
       environment: {
         nodeEnv: process.env.NODE_ENV,
         nextjsVersion: process.env.npm_package_dependencies_next || 'unknown'
       },
-      recommendations: []
+      recommendations: [] as Array<{
+        type: string;
+        message: string;
+        action: string;
+        service?: string;
+      }>
     };
     
     // Check database

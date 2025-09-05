@@ -62,7 +62,11 @@ export async function GET() {
         name: idx.indexname,
         table: idx.tablename
       })),
-      recommendations: []
+      recommendations: [] as Array<{
+        type: string;
+        message: string;
+        action: string;
+      }>
     };
     
     // Add recommendations
