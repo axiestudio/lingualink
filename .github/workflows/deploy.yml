@@ -197,23 +197,24 @@ jobs:
           tags: ${{ steps.meta-backend.outputs.tags }}
           labels: ${{ steps.meta-backend.outputs.labels }}
 
-  # Deploy to Digital Ocean
-  deploy:
+  # Build Success Notification
+  build-success:
     needs: [docker-build]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
 
     steps:
-      - name: Deploy to Digital Ocean
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.DO_HOST }}
-          username: ${{ secrets.DO_USERNAME }}
-          key: ${{ secrets.DO_SSH_KEY }}
-          script: |
-            # Pull latest images
-            docker pull ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}:latest
-            docker pull ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE_NAME }}:latest
+      - name: Build Success Notification
+        run: |
+          echo "🎉 BUILD SUCCESSFUL! 🎉"
+          echo "✅ Frontend Docker image built and pushed successfully"
+          echo "✅ Backend Docker image built and pushed successfully"
+          echo "🐳 Images available at:"
+          echo "   Frontend: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}:latest"
+          echo "   Backend: ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE_NAME }}:latest"
+          echo ""
+          echo "🚀 Ready for deployment!"
+          echo "📋 To deploy, configure your deployment secrets and update the workflow"
 
             # Stop existing containers
             docker-compose -f /opt/lingualink/docker-compose.prod.yml down || true
