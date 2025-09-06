@@ -36,8 +36,8 @@ logger = logging.getLogger(__name__)
 translation_model = None
 tokenizer = None
 model_lock = threading.Lock()
-translation_semaphore = None
-executor = None
+translation_semaphore = Semaphore(20)  # Initialize immediately for testing
+executor = ThreadPoolExecutor(max_workers=8)  # Initialize immediately for testing
 
 # Performance monitoring
 request_count = 0
@@ -52,7 +52,9 @@ class TranslationRequest(BaseModel):
     user_id: Optional[str] = Field(None, description="User ID for rate limiting")
 
 class BatchTranslationRequest(BaseModel):
-    requests: List[TranslationRequest] = Field(..., description="List of translation requests", max_items=50)
+    model_config = {"protected_namespaces": ()}  # Fix Pydantic warnings
+
+    requests: List[TranslationRequest] = Field(..., description="List of translation requests", max_length=50)
     batch_id: Optional[str] = Field(None, description="Batch identifier")
 
 class TranslationResponse(BaseModel):
@@ -62,6 +64,8 @@ class TranslationResponse(BaseModel):
     model_used: str
 
 class HealthResponse(BaseModel):
+    model_config = {"protected_namespaces": ()}  # Fix Pydantic warnings
+
     status: str
     model_loaded: bool
     supported_languages: int
@@ -72,6 +76,8 @@ class HealthResponse(BaseModel):
     memory_usage: Optional[str] = None
 
 class PerformanceStats(BaseModel):
+    model_config = {"protected_namespaces": ()}  # Fix Pydantic warnings
+
     active_requests: int
     total_requests: int
     avg_processing_time: float
@@ -105,9 +111,11 @@ async def load_translation_model():
     try:
         logger.info("🚀 Loading local translation model for MASS REQUESTS...")
 
-        # Initialize concurrency controls for mass requests
-        translation_semaphore = Semaphore(20)  # Allow 20 concurrent translations
-        executor = ThreadPoolExecutor(max_workers=8)  # Thread pool for CPU-bound tasks
+        # Initialize concurrency controls for mass requests (if not already initialized)
+        if translation_semaphore is None:
+            translation_semaphore = Semaphore(20)  # Allow 20 concurrent translations
+        if executor is None:
+            executor = ThreadPoolExecutor(max_workers=8)  # Thread pool for CPU-bound tasks
 
         # Option 1: Using Transformers with production-ready models
         try:
