@@ -11,8 +11,7 @@ on:
 
 env:
   REGISTRY: docker.io
-  FRONTEND_IMAGE_NAME: axiestudio/lingualink-frontend
-  BACKEND_IMAGE_NAME: axiestudio/lingualink-backend
+  FULLSTACK_IMAGE_NAME: axiestudio/lingualink
 
 jobs:
   # Build and test frontend
@@ -146,36 +145,25 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract metadata for frontend
-        id: meta-frontend
+      - name: Extract metadata for fullstack
+        id: meta-fullstack
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ env.FULLSTACK_IMAGE_NAME }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Extract metadata for backend
-        id: meta-backend
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push frontend image
+      - name: Build and push fullstack image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile
+          file: ./Dockerfile.fullstack
           push: true
-          tags: ${{ steps.meta-frontend.outputs.tags }}
-          labels: ${{ steps.meta-frontend.outputs.labels }}
+          tags: ${{ steps.meta-fullstack.outputs.tags }}
+          labels: ${{ steps.meta-fullstack.outputs.labels }}
           build-args: |
             DATABASE_URL=${{ secrets.DATABASE_URL }}
             NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
@@ -187,15 +175,6 @@ jobs:
             VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}
             VAPID_SUBJECT=${{ secrets.VAPID_SUBJECT }}
 
-      - name: Build and push backend image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend
-          file: ./backend/Dockerfile
-          push: true
-          tags: ${{ steps.meta-backend.outputs.tags }}
-          labels: ${{ steps.meta-backend.outputs.labels }}
-
   # Build Success Notification
   build-success:
     needs: [docker-build]
@@ -205,12 +184,11 @@ jobs:
     steps:
       - name: Build Success Notification
         run: |
-          echo "🎉 BUILD SUCCESSFUL! 🎉"
-          echo "✅ Frontend Docker image built and pushed successfully"
-          echo "✅ Backend Docker image built and pushed successfully"
-          echo "🐳 Images available at:"
-          echo "   Frontend: ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}:latest"
-          echo "   Backend: ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE_NAME }}:latest"
+          echo "🎉 FULLSTACK BUILD SUCCESSFUL! 🎉"
+          echo "✅ LinguaLink fullstack application built and pushed successfully"
+          echo "🐳 Fullstack image available at:"
+          echo "   📦 ${{ env.REGISTRY }}/${{ env.FULLSTACK_IMAGE_NAME }}:latest"
           echo ""
           echo "🚀 Ready for deployment!"
-          echo "📋 To deploy, configure your deployment secrets and update the workflow"
+          echo "📋 Single container includes both frontend and backend"
+          echo "🌐 Deploy with: docker run -p 3000:3000 ${{ env.REGISTRY }}/${{ env.FULLSTACK_IMAGE_NAME }}:latest"
