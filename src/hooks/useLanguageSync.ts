@@ -44,7 +44,7 @@ export function useLanguageSync(callbacks: LanguageSyncCallbacks = {}) {
     if (user?.id) {
       loadLanguagePreference();
     }
-  }, [user?.id]);
+  }, [user?.id, loadLanguagePreference]);
 
   // 📥 Load language preference from database
   const loadLanguagePreference = useCallback(async () => {

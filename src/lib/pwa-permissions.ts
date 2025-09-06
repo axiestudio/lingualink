@@ -90,21 +90,21 @@ class PWAPermissionManager {
       try {
         const cameraPermission = await navigator.permissions.query({ name: 'camera' as any });
         status.camera = cameraPermission.state as any;
-      } catch (error) {
+      } catch {
         // Camera permission not supported or denied
       }
 
       try {
         const micPermission = await navigator.permissions.query({ name: 'microphone' as any });
         status.microphone = micPermission.state as any;
-      } catch (error) {
+      } catch {
         // Microphone permission not supported or denied
       }
 
       try {
         const locationPermission = await navigator.permissions.query({ name: 'geolocation' as any });
         status.location = locationPermission.state as any;
-      } catch (error) {
+      } catch {
         // Location permission not supported or denied
       }
     }

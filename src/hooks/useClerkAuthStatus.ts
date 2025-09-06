@@ -103,7 +103,7 @@ export function useClerkAuthStatus() {
       console.log('🔌 Logging out from Socket.IO...');
       logoutUser();
     }
-  }, [socket, isConnected]);
+  }, [socket, isConnected, logoutUser]);
 
   // Handle session expiry
   const handleSessionExpiry = useCallback(async () => {

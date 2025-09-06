@@ -5,7 +5,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { secureLogger, SecurityEventType, SecuritySeverity } from '@/lib/secure-logger';
+import { secureLogger, SecurityEventType } from '@/lib/secure-logger';
 
 // 🛡️ SECURITY HEADERS CONFIGURATION
 const SECURITY_HEADERS = {
@@ -199,7 +199,7 @@ export function securityMiddleware(request: NextRequest): NextResponse {
 
     return response;
 
-  } catch (error) {
+  } catch (middlewareError) {
     secureLogger.logCriticalSecurity(
       SecurityEventType.SYSTEM_ERROR,
       'Security middleware error',
@@ -309,7 +309,7 @@ function checkRateLimit(clientIP: string | null, pathname: string): {
 
   const key = `${clientIP}:${pathname}`;
   const now = Date.now();
-  const windowStart = now - rateLimit.window;
+  // const windowStart = now - rateLimit.window; // Unused variable
 
   // Clean up old entries
   if (rateLimitStore.size > 10000) {

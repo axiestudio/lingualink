@@ -34,7 +34,7 @@ export function usePushNotifications() {
     } else {
       console.log('❌ Push notifications are not supported');
     }
-  }, []);
+  }, [registerServiceWorker]);
 
   // Register service worker with retry logic
   const registerServiceWorker = async (retryCount = 0) => {

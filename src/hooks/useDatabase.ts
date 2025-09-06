@@ -205,7 +205,7 @@ export function useDatabase() {
       console.error('Error sending message:', err);
       throw err;
     }
-  }, [loadConversations]);
+  }, []);
 
   // Get messages for a room
   const getRoomMessages = useCallback(async (roomId: string): Promise<DatabaseMessage[]> => {

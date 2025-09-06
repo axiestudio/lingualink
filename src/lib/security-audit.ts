@@ -45,7 +45,7 @@ class SecurityAuditLogger {
     }
   }
 
-  private async sendToSecureLogging(event: SecurityEvent) {
+  private async sendToSecureLogging(_event: SecurityEvent) {
     // TODO: Implement secure logging service integration
     // Examples: AWS CloudWatch, Datadog, Splunk, etc.
     try {

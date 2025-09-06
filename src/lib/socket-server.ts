@@ -1,6 +1,6 @@
 import { Server as SocketIOServer } from 'socket.io';
 import { neon } from '@neondatabase/serverless';
-import { secureLogger, SecurityEventType, SecuritySeverity } from './secure-logger';
+import { secureLogger, SecurityEventType } from './secure-logger';
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -123,8 +123,8 @@ class SocketIOManager {
           console.log(`✅ User authenticated with valid Clerk session: ${userId}`);
           console.log(`📊 Total connected users: ${this.userSockets.size}`);
 
-        } catch (error) {
-          console.error('❌ Authentication error:', error);
+        } catch (authError) {
+          console.error('❌ Authentication error:', authError);
           socket.emit('authentication_error', { error: 'Authentication failed' });
         }
       });
@@ -190,7 +190,7 @@ class SocketIOManager {
           );
 
           socket.emit('room_joined', { roomId, success: true });
-        } catch (error) {
+        } catch {
           secureLogger.logCriticalSecurity(
             SecurityEventType.SYSTEM_ERROR,
             'Room access verification failed',
@@ -280,8 +280,8 @@ class SocketIOManager {
           console.log(`✅ User ${userId} logged out successfully`);
           console.log(`📊 Total connected users: ${this.userSockets.size}`);
 
-        } catch (error) {
-          console.error('❌ Error handling user logout:', error);
+        } catch (logoutError) {
+          console.error('❌ Error handling user logout:', logoutError);
           socket.emit('logout_error', { error: 'Logout failed' });
         }
       });
@@ -306,8 +306,8 @@ class SocketIOManager {
             console.log(`👋 User ${userId} disconnected`);
             console.log(`📊 Total connected users: ${this.userSockets.size}`);
             
-          } catch (error) {
-            console.error('❌ Error handling disconnection:', error);
+          } catch (disconnectError) {
+            console.error('❌ Error handling disconnection:', disconnectError);
           }
         }
       });
@@ -376,7 +376,7 @@ class SocketIOManager {
         }
       );
 
-    } catch (error) {
+    } catch (broadcastError) {
       secureLogger.logCriticalSecurity(
         SecurityEventType.SYSTEM_ERROR,
         'Error during message broadcasting',
@@ -411,8 +411,8 @@ class SocketIOManager {
         SET is_online = ${isOnline}, last_seen = CURRENT_TIMESTAMP
         WHERE clerk_id = ${userId}
       `;
-    } catch (error) {
-      console.error('❌ Error updating user online status:', error);
+    } catch (statusError) {
+      console.error('❌ Error updating user online status:', statusError);
     }
   }
 
@@ -425,7 +425,7 @@ class SocketIOManager {
         LIMIT 1
       `;
       return result.length > 0;
-    } catch (error) {
+    } catch (dbError) {
       secureLogger.logCriticalSecurity(
         SecurityEventType.SYSTEM_ERROR,
         'Database error during room access verification',
@@ -444,7 +444,7 @@ class SocketIOManager {
         LIMIT 1
       `;
       return result.length > 0;
-    } catch (error) {
+    } catch (existsError) {
       secureLogger.logCriticalSecurity(
         SecurityEventType.SYSTEM_ERROR,
         'Database error during room existence verification',
@@ -462,7 +462,7 @@ class SocketIOManager {
         WHERE room_id = ${roomId}
       `;
       return result.map((row: any) => row.user_clerk_id);
-    } catch (error) {
+    } catch (participantsError) {
       secureLogger.logCriticalSecurity(
         SecurityEventType.SYSTEM_ERROR,
         'Database error during room participants retrieval',
@@ -535,8 +535,8 @@ class SocketIOManager {
       console.log(`✅ Clerk session validated for user: ${userId}`);
       return true;
 
-    } catch (error) {
-      console.error('❌ Error validating Clerk session:', error);
+    } catch (validationError) {
+      console.error('❌ Error validating Clerk session:', validationError);
       // If we can't validate, assume invalid for security
       return false;
     }
@@ -576,8 +576,8 @@ class SocketIOManager {
             socketUser.authenticatedAt = now;
           }
         }
-      } catch (error) {
-        console.error(`❌ Error validating session for user ${userId}:`, error);
+      } catch (sessionError) {
+        console.error(`❌ Error validating session for user ${userId}:`, sessionError);
         expiredUsers.push(userId);
       }
     }
@@ -616,8 +616,8 @@ class SocketIOManager {
         this.socketUsers.delete(socketUser.socketId);
 
         console.log(`🧹 Forced user ${userId} offline due to session expiry`);
-      } catch (error) {
-        console.error(`❌ Error forcing user ${userId} offline:`, error);
+      } catch (offlineError) {
+        console.error(`❌ Error forcing user ${userId} offline:`, offlineError);
       }
     }
   }
@@ -673,8 +673,8 @@ class SocketIOManager {
 
 
 
-    } catch (error) {
-      console.error('❌ Error broadcasting profile update:', error);
+    } catch (profileError) {
+      console.error('❌ Error broadcasting profile update:', profileError);
     }
   }
 

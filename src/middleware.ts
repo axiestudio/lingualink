@@ -27,7 +27,7 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
       if (!userId) {
         return NextResponse.redirect(new URL('/sign-in', req.url));
       }
-    } catch (error) {
+    } catch {
       // If auth fails, redirect to sign-in
       return NextResponse.redirect(new URL('/sign-in', req.url));
     }
