@@ -177,6 +177,16 @@ jobs:
           push: true
           tags: ${{ steps.meta-frontend.outputs.tags }}
           labels: ${{ steps.meta-frontend.outputs.labels }}
+          build-args: |
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+            CLERK_SECRET_KEY=${{ secrets.CLERK_SECRET_KEY }}
+            NEXT_PUBLIC_APP_URL=${{ secrets.NEXT_PUBLIC_APP_URL }}
+            CLERK_WEBHOOK_SECRET=${{ secrets.CLERK_WEBHOOK_SECRET }}
+            FEATHERLESS_API_KEY=${{ secrets.FEATHERLESS_API_KEY }}
+            NEXT_PUBLIC_VAPID_PUBLIC_KEY=${{ secrets.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
+            VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}
+            VAPID_SUBJECT=${{ secrets.VAPID_SUBJECT }}
 
       - name: Build and push backend image
         uses: docker/build-push-action@v5
