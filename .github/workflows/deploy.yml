@@ -84,47 +84,47 @@ jobs:
 
       - name: Run backend tests
         run: |
-        cd backend
-        # Create basic test if none exist
-        if [ ! -f "test_main.py" ]; then
-          echo "Creating basic health test..."
-          cat > test_main.py << 'EOF'
-import pytest
-from fastapi.testclient import TestClient
-from main import app
+          cd backend
+          # Create basic test if none exist
+          if [ ! -f "test_main.py" ]; then
+            echo "Creating basic health test..."
+            cat > test_main.py << 'EOF'
+          import pytest
+          from fastapi.testclient import TestClient
+          from main import app
 
-client = TestClient(app)
+          client = TestClient(app)
 
-def test_root():
-    """Test root endpoint"""
-    response = client.get("/")
-    assert response.status_code == 200
-    assert "LinguaLink" in response.json()["message"]
+          def test_root():
+              """Test root endpoint"""
+              response = client.get("/")
+              assert response.status_code == 200
+              assert "LinguaLink" in response.json()["message"]
 
-def test_health():
-    """Test health endpoint"""
-    response = client.get("/health")
-    assert response.status_code == 200
-    data = response.json()
-    assert "status" in data
-    assert "model_loaded" in data
+          def test_health():
+              """Test health endpoint"""
+              response = client.get("/health")
+              assert response.status_code == 200
+              data = response.json()
+              assert "status" in data
+              assert "model_loaded" in data
 
-def test_languages():
-    """Test languages endpoint"""
-    response = client.get("/languages")
-    assert response.status_code == 200
-    data = response.json()
-    assert "languages" in data
-    assert "count" in data
-    assert data["count"] > 0
-EOF
-        fi
-        # Run tests if they exist
-        if [ -f "test_main.py" ] || [ -d "tests" ]; then
-          python -m pytest -v
-        else
-          echo "No tests found, skipping test phase"
-        fi
+          def test_languages():
+              """Test languages endpoint"""
+              response = client.get("/languages")
+              assert response.status_code == 200
+              data = response.json()
+              assert "languages" in data
+              assert "count" in data
+              assert data["count"] > 0
+          EOF
+          fi
+          # Run tests if they exist
+          if [ -f "test_main.py" ] || [ -d "tests" ]; then
+            python -m pytest -v
+          else
+            echo "No tests found, skipping test phase"
+          fi
 
   # Build and push Docker images
   docker-build:
