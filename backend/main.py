@@ -58,6 +58,8 @@ class BatchTranslationRequest(BaseModel):
     batch_id: Optional[str] = Field(None, description="Batch identifier")
 
 class TranslationResponse(BaseModel):
+    model_config = {"protected_namespaces": ()}  # Fix Pydantic warnings
+
     success: bool
     translation: Dict[str, Any]
     processing_time: float

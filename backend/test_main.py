@@ -91,14 +91,19 @@ def test_translate_endpoint_mock(client):
         "source_language": "en",
         "priority": 1
     }
-    
+
     response = client.post("/translate", json=translation_data)
     assert response.status_code == 200
     data = response.json()
-    assert "translated_text" in data
-    assert "source_language" in data
-    assert "target_language" in data
+    assert "success" in data
+    assert data["success"] is True
+    assert "translation" in data
+    assert "translatedText" in data["translation"]
+    assert "originalText" in data["translation"]
+    assert "sourceLanguage" in data["translation"]
+    assert "targetLanguage" in data["translation"]
     assert "processing_time" in data
+    assert "model_used" in data
 
 def test_translate_endpoint_validation(client):
     """Test translation endpoint input validation"""
