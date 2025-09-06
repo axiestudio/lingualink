@@ -13,7 +13,9 @@ const connections = new Map<string, {
 }>();
 
 // Broadcast message to specific users in a room (excluding sender)
-export async function broadcastToRoom(roomId: string, messageData: any, senderUserId: string) {
+// NOTE: This function is not exported as it's not a valid Next.js route export
+// It's kept here for reference but should be moved to a utility file if needed
+async function broadcastToRoom(roomId: string, messageData: any, senderUserId: string) {
   console.log(`📡 Broadcasting message to room ${roomId} (excluding sender ${senderUserId}):`, messageData);
 
   try {
