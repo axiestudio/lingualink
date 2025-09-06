@@ -4,6 +4,9 @@ const nextConfig: NextConfig = {
   // Exclude mobile directory from Next.js compilation
   pageExtensions: ['js', 'jsx', 'ts', 'tsx', 'md', 'mdx'],
 
+  // Output configuration for Docker deployment
+  output: 'standalone',
+
   // Webpack configuration
   webpack: (config) => {
     // Exclude mobile directory from webpack compilation
