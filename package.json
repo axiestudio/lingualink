@@ -6,7 +6,7 @@
     "dev": "node server.js",
     "dev:next": "next dev --turbopack",
     "dev:health": "node server.js & sleep 5 && node scripts/startup-health-check.js",
-    "build": "next build --turbopack",
+    "build": "next build",
     "start": "NODE_ENV=production node server.js",
     "start:next": "next start",
     "start:health": "NODE_ENV=production node server.js & sleep 5 && node scripts/startup-health-check.js",

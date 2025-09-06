@@ -2,7 +2,7 @@
 # AS A SENIOR DEVELOPER - Multi-stage build for optimized production deployment
 
 # Stage 1: Build stage
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -27,7 +27,7 @@ ENV NODE_ENV=production
 RUN npm run build
 
 # Stage 2: Production stage
-FROM node:18-alpine AS runner
+FROM node:20-alpine AS runner
 
 # Set working directory
 WORKDIR /app
