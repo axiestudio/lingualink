@@ -133,7 +133,7 @@ export function generateSecureToken(length: number = 32): string {
   try {
     const crypto = require('crypto');
     return crypto.randomBytes(length).toString('hex');
-  } catch {
+  } catch (error) {
     // Ultimate fallback using Math.random (less secure but works)
     console.warn('Crypto not available, using Math.random fallback');
     return Array.from({ length: length * 2 }, () => Math.floor(Math.random() * 16).toString(16)).join('');

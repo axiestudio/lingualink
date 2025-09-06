@@ -1,46 +1,96 @@
-# LinguaLink Fullstack Production Docker Compose
-# AS A SENIOR DEVELOPER - Single container fullstack deployment
+# LinguaLink Production Docker Compose
+# AS A SENIOR DEVELOPER - Production deployment configuration
 
 version: '3.8'
 
 services:
-  # LinguaLink Fullstack Service
-  lingualink:
-    image: axiestudio/lingualink:latest
-    container_name: lingualink-fullstack
+  # Frontend Service
+  frontend:
+    image: ghcr.io/axiestudio/lingualink-frontend:latest
+    container_name: lingualink-frontend
     restart: unless-stopped
     ports:
-      - "80:3000"    # Frontend (mapped to port 80)
-      - "8000:8000"  # Backend API
+      - "3000:3000"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=${DATABASE_URL}
       - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
       - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
-      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
       - CLERK_WEBHOOK_SECRET=${CLERK_WEBHOOK_SECRET}
+      - CLERK_JWT_ISSUER_DOMAIN=${CLERK_JWT_ISSUER_DOMAIN}
+      - DATABASE_URL=${DATABASE_URL}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+      - NEXT_PUBLIC_LOCAL_BACKEND_URL=http://backend:8000
+      - LOCAL_BACKEND_URL=http://backend:8000
+      - LOCAL_BACKEND_API_KEY=${LOCAL_BACKEND_API_KEY}
       - FEATHERLESS_API_KEY=${FEATHERLESS_API_KEY}
-      - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+      - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
       - VAPID_SUBJECT=${VAPID_SUBJECT}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      - backend
     networks:
       - lingualink-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health/system"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  # Backend Service (LLM Translation Service)
+  backend:
+    image: ghcr.io/axiestudio/lingualink-backend:latest
+    container_name: lingualink-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=false
+      - LOCAL_BACKEND_API_KEY=${LOCAL_BACKEND_API_KEY}
+    volumes:
+      - backend-cache:/app/.cache
+    networks:
+      - lingualink-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     deploy:
       resources:
         limits:
-          memory: 2G
-          cpus: '1.0'
+          memory: 8G
+          cpus: '4.0'
         reservations:
-          memory: 1G
-          cpus: '0.5'
+          memory: 4G
+          cpus: '2.0'
 
-  # Redis Cache (Optional - for session storage)
+  # Nginx Reverse Proxy (Optional)
+  nginx:
+    image: nginx:alpine
+    container_name: lingualink-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - lingualink-network
+
+  # Redis Cache (Optional)
   redis:
     image: redis:7-alpine
     container_name: lingualink-redis
@@ -51,9 +101,11 @@ services:
       - redis-data:/data
     networks:
       - lingualink-network
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
 
 volumes:
+  backend-cache:
+    driver: local
   redis-data:
     driver: local
 

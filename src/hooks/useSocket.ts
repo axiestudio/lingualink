@@ -172,7 +172,7 @@ export function useSocket(callbacks: SocketCallbacks = {}) {
       callbacks.onDisconnected?.();
     });
 
-  }, [user, callbacks]); // Include callbacks dependency
+  }, [user]); // Remove callbacks dependency to prevent infinite re-initialization
 
   // Join room for real-time messaging
   const joinRoom = useCallback((roomId: string) => {
@@ -265,7 +265,7 @@ export function useSocket(callbacks: SocketCallbacks = {}) {
         setIsAuthenticated(false);
       }
     };
-  }, [user, initializeSocket]); // Include initializeSocket dependency
+  }, [user]); // Remove initializeSocket dependency
 
   return {
     socket: socketRef.current,

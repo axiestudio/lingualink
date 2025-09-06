@@ -181,7 +181,7 @@ export function getVapidPublicKey(): string {
   return process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!;
 }
 
-const pushNotifications = {
+export default {
   subscribeUser,
   unsubscribeUser,
   sendPushNotification,
@@ -191,5 +191,3 @@ const pushNotifications = {
   getSubscribedUsers,
   getVapidPublicKey
 };
-
-export default pushNotifications;
