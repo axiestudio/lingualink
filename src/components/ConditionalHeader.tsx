@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation'
 import { SignInButton, SignUpButton, SignedIn, SignedOut, UserButton } from '@clerk/nextjs'
 import { ThemeToggle } from './theme-toggle'
+import LinguaLinkLogo from './LinguaLinkLogo'
 
 export default function ConditionalHeader() {
   const pathname = usePathname()
@@ -17,14 +18,7 @@ export default function ConditionalHeader() {
   return (
     <header className="flex justify-between items-center p-6 h-20 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/50 dark:border-slate-700/50 sticky top-0 z-50 shadow-sm">
       {/* Premium Logo and Brand */}
-      <div className="flex items-center space-x-4">
-        <div className="w-10 h-10">
-          <img src="/logo.svg" alt="Lingua Link Logo" className="w-full h-full drop-shadow-lg" />
-        </div>
-        <span className="text-2xl font-bold bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900 dark:from-slate-100 dark:via-blue-400 dark:to-slate-100 bg-clip-text text-transparent">
-          Lingua Link
-        </span>
-      </div>
+      <LinguaLinkLogo size="lg" variant="full" />
 
       {/* Premium Auth Buttons */}
       <div className="flex items-center gap-6">

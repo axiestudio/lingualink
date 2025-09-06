@@ -62,7 +62,7 @@ app.prepare().then(() => {
     socket.on('authenticate', async (data) => {
       try {
         const { userId, token } = data;
-        console.log(`🔐 User authenticating: ${userId}`);
+
 
         // Check if user already has a connection
         const existingSocketId = userSockets.get(userId);
@@ -70,7 +70,7 @@ app.prepare().then(() => {
           // Disconnect the old socket
           const existingSocket = io.sockets.sockets.get(existingSocketId);
           if (existingSocket) {
-            console.log(`🔄 Replacing existing connection for user: ${userId}`);
+
             existingSocket.disconnect(true);
           }
         }
@@ -85,8 +85,7 @@ app.prepare().then(() => {
         // Send confirmation
         socket.emit('authenticated', { success: true, userId });
         
-        console.log(`✅ User authenticated: ${userId}`);
-        console.log(`📊 Connected users: ${userSockets.size}`);
+
         
       } catch (error) {
         console.error('❌ Authentication error:', error);
@@ -101,7 +100,7 @@ app.prepare().then(() => {
       
       if (userId) {
         socket.join(`room_${roomId}`);
-        console.log(`🏠 User ${userId} joined room: ${roomId}`);
+
         socket.emit('room_joined', { roomId, success: true });
       }
     });
@@ -113,7 +112,7 @@ app.prepare().then(() => {
       
       if (userId) {
         socket.leave(`room_${roomId}`);
-        console.log(`🚪 User ${userId} left room: ${roomId}`);
+
         socket.emit('room_left', { roomId, success: true });
       }
     });
@@ -146,7 +145,7 @@ app.prepare().then(() => {
       const { userId, updates } = data;
       const senderUserId = socketUsers.get(socket.id);
 
-      console.log(`👤 Broadcasting profile update for user ${userId}:`, updates);
+
 
       // Verify the user is updating their own profile
       if (senderUserId !== userId) {
@@ -174,7 +173,7 @@ app.prepare().then(() => {
             if (targetSocket) {
               targetSocket.emit('user_profile_updated', profileUpdatePayload);
               deliveredCount++;
-              console.log(`📨 Profile update delivered to user: ${connectedUserId}`);
+
             }
           }
         }
@@ -204,14 +203,14 @@ app.prepare().then(() => {
     // Handle real-time message broadcasting with acknowledgments
     socket.on('broadcast_message', (data, callback) => {
       const { roomId, messageData, senderUserId } = data;
-      console.log(`📡 Broadcasting message to room ${roomId} (excluding sender ${senderUserId})`);
+
 
       try {
         // Get room participants
         const roomSockets = io.sockets.adapter.rooms.get(`room_${roomId}`);
         const totalParticipants = roomSockets ? roomSockets.size : 0;
 
-        console.log(`👥 Room ${roomId} has ${totalParticipants} participants`);
+
 
         // Get currently connected users in this room
         const connectedUsers = [];
@@ -224,7 +223,7 @@ app.prepare().then(() => {
           }
         }
 
-        console.log(`🔌 Currently connected users: ${JSON.stringify(connectedUsers)}`);
+
 
         // Broadcast to room excluding sender with instant delivery
         const messagePayload = {
@@ -244,15 +243,15 @@ app.prepare().then(() => {
               if (targetSocket) {
                 targetSocket.emit('new_message', messagePayload);
                 deliveredCount++;
-                console.log(`📨 Message delivered to user: ${userId}`);
+
               }
             } else if (userId === senderUserId) {
-              console.log(`⏭️ Skipping sender: ${senderUserId}`);
+
             }
           }
         }
 
-        console.log(`✅ Broadcast complete: ${deliveredCount}/${connectedUsers.length} recipients`);
+
 
         // Send acknowledgment back to sender
         if (callback) {
@@ -289,8 +288,7 @@ app.prepare().then(() => {
       if (userId) {
         userSockets.delete(userId);
         socketUsers.delete(socket.id);
-        console.log(`👋 User ${userId} disconnected`);
-        console.log(`📊 Connected users: ${userSockets.size}`);
+
       }
     });
   });

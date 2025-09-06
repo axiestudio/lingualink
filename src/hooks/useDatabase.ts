@@ -16,6 +16,7 @@ export interface DatabaseUser {
 export interface DatabaseConversation {
   room_id: string;
   user_id: string;
+  clerk_id: string;
   username: string;
   name: string;
   avatar_url?: string;
@@ -234,6 +235,7 @@ export function useDatabase() {
 
   return {
     conversations,
+    setConversations,
     loading,
     error,
     searchUsers,

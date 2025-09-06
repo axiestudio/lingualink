@@ -1,14 +1,127 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { sendMessage, getRoomMessages, getOrCreateRoom, getUserLanguage } from '../../actions';
 import { getTranslationService } from '@/lib/translation';
 import { neon } from '@neondatabase/serverless';
 import { getBroadcaster } from '@/lib/realtime-broadcaster';
 import { sendInstantMessageNotification } from '@/lib/push-notifications';
 import { messagingRateLimit, apiRateLimit, getClientIP, createRateLimitResponse } from '@/lib/rate-limiter';
 import { logUnauthorizedAccess, logRateLimitExceeded, logDataAccess } from '@/lib/security-audit';
+import { secureLogger, SecurityEventType, SecuritySeverity } from '@/lib/secure-logger';
+
 
 const sql = neon(process.env.DATABASE_URL!);
+
+// 🔒 DATABASE FUNCTIONS (moved from actions.ts for production compatibility)
+async function getUserLanguage(userId: string): Promise<string> {
+  try {
+    const result = await sql`
+      SELECT language_preference FROM users
+      WHERE clerk_id = ${userId}
+      LIMIT 1
+    `;
+    return result[0]?.language_preference || 'en';
+  } catch (error) {
+    console.error('Error getting user language:', error);
+    return 'en';
+  }
+}
+
+async function getOrCreateRoom(userId1: string, userId2: string): Promise<string> {
+  try {
+    // Check if room already exists
+    const existingRoom = await sql`
+      SELECT r.id FROM rooms r
+      JOIN room_participants rp1 ON r.id = rp1.room_id
+      JOIN room_participants rp2 ON r.id = rp2.room_id
+      WHERE rp1.user_clerk_id = ${userId1}
+      AND rp2.user_clerk_id = ${userId2}
+      AND r.type = 'direct'
+      LIMIT 1
+    `;
+
+    if (existingRoom.length > 0) {
+      return existingRoom[0].id;
+    }
+
+    // Create new room
+    const roomId = `room_${Math.random().toString(36).substring(2, 18)}`;
+
+    await sql`
+      INSERT INTO rooms (id, name, type, created_by)
+      VALUES (${roomId}, 'Direct Message', 'direct', ${userId1})
+    `;
+
+    // Add participants
+    await sql`
+      INSERT INTO room_participants (room_id, user_clerk_id)
+      VALUES (${roomId}, ${userId1}), (${roomId}, ${userId2})
+    `;
+
+    return roomId;
+  } catch (error) {
+    console.error('Error creating room:', error);
+    throw error;
+  }
+}
+
+async function sendMessage(
+  roomId: string,
+  userId: string,
+  content: string,
+  translatedContent?: string,
+  targetLanguage?: string,
+  replyToMessageId?: string
+) {
+  try {
+    const messageId = `msg_${Math.random().toString(36).substring(2, 18)}`;
+
+    const result = await sql`
+      INSERT INTO messages (
+        id, room_id, user_clerk_id, content, translated_content,
+        target_language, reply_to_message_id, created_at
+      )
+      VALUES (
+        ${messageId}, ${roomId}, ${userId}, ${content},
+        ${translatedContent || null}, ${targetLanguage || null},
+        ${replyToMessageId || null}, NOW()
+      )
+      RETURNING *
+    `;
+
+    return result[0];
+  } catch (error) {
+    console.error('Error sending message:', error);
+    throw error;
+  }
+}
+
+async function getRoomMessages(roomId: string, limit: number = 50) {
+  try {
+    const messages = await sql`
+      SELECT
+        m.*,
+        u.first_name,
+        u.last_name,
+        u.image_url,
+        u.username,
+        reply_msg.content as reply_to_content,
+        reply_user.first_name as reply_to_first_name,
+        reply_user.last_name as reply_to_last_name
+      FROM messages m
+      LEFT JOIN users u ON m.user_clerk_id = u.clerk_id
+      LEFT JOIN messages reply_msg ON m.reply_to_message_id = reply_msg.id
+      LEFT JOIN users reply_user ON reply_msg.user_clerk_id = reply_user.clerk_id
+      WHERE m.room_id = ${roomId}
+      ORDER BY m.created_at DESC
+      LIMIT ${limit}
+    `;
+
+    return messages.reverse();
+  } catch (error) {
+    console.error('Error getting room messages:', error);
+    throw error;
+  }
+}
 
 // 🔒 SECURITY FUNCTIONS
 async function verifyRoomAccess(userId: string, roomId: string): Promise<boolean> {
@@ -20,12 +133,16 @@ async function verifyRoomAccess(userId: string, roomId: string): Promise<boolean
     `;
     return result.length > 0;
   } catch (error) {
-    console.error('Error verifying room access:', error);
+    secureLogger.logCriticalSecurity(
+      SecurityEventType.SYSTEM_ERROR,
+      'Database error during room access verification',
+      { error: 'DB_ERROR' }
+    );
     return false;
   }
 }
 
-function sanitizeInput(input: string): string {
+function sanitizeMessageInput(input: string): string {
   if (!input || typeof input !== 'string') return '';
   // Remove potentially dangerous characters and limit length
   return input.trim().substring(0, 1000).replace(/[<>]/g, '');
@@ -43,12 +160,33 @@ export async function POST(request: NextRequest) {
   try {
     console.log('📨 POST /api/messages - Message send request received');
 
-    // 🔒 SECURITY: Authentication check
-    const { userId } = await auth();
+    // 🔒 SECURITY: Authentication check with error handling
+    let userId: string | null = null;
+    try {
+      const authResult = await auth();
+      userId = authResult.userId;
+    } catch (authError) {
+      console.error('❌ Clerk authentication error:', authError);
+      const clientIP = getClientIP(request);
+      logUnauthorizedAccess(undefined, clientIP, '/api/messages', request.headers.get('user-agent') || undefined);
+      secureLogger.logWarningSecurity(
+        SecurityEventType.AUTHENTICATION_FAILURE,
+        'Clerk authentication failed',
+        { error: authError instanceof Error ? authError.message : 'Unknown auth error' }
+      );
+      return NextResponse.json({
+        error: 'Authentication service unavailable',
+        details: 'Please try again later'
+      }, { status: 503 });
+    }
+
     if (!userId) {
       const clientIP = getClientIP(request);
       logUnauthorizedAccess(undefined, clientIP, '/api/messages', request.headers.get('user-agent') || undefined);
-      console.log('❌ Unauthorized - no userId');
+      secureLogger.logWarningSecurity(
+        SecurityEventType.AUTHENTICATION_FAILURE,
+        'Unauthorized message send attempt - no user ID'
+      );
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -59,19 +197,19 @@ export async function POST(request: NextRequest) {
 
     if (!rateLimit.allowed) {
       logRateLimitExceeded(userId, clientIP, '/api/messages', request.headers.get('user-agent') || undefined);
-      console.warn(`🚨 Rate limit exceeded for user ${userId} from IP ${clientIP}`);
+      secureLogger.logWarningSecurity(
+        SecurityEventType.RATE_LIMIT_EXCEEDED,
+        'Message rate limit exceeded',
+        {
+          userId: userId.substring(0, 8) + '***',
+          clientIP: clientIP?.substring(0, 8) + '***'
+        }
+      );
       return createRateLimitResponse('Too many messages. Please slow down.', rateLimit.resetTime);
     }
 
     const { roomId, message, receiverId, replyToMessageId, preTranslatedMessage, targetLanguage: clientTargetLanguage } = await request.json();
-    console.log('📋 Message send request:', {
-      userId,
-      roomId: roomId?.substring(0, 20) + '...',
-      messageLength: message?.length,
-      receiverId: receiverId?.substring(0, 10) + '...',
-      hasPreTranslation: !!preTranslatedMessage,
-      clientTargetLanguage
-    });
+
 
     // 🔒 SECURITY: Input validation
     if (!roomId || !message) {
@@ -82,7 +220,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid room ID format' }, { status: 400 });
     }
 
-    const sanitizedMessage = sanitizeInput(message);
+    const sanitizedMessage = sanitizeMessageInput(message);
     if (!sanitizedMessage) {
       return NextResponse.json({ error: 'Invalid message content' }, { status: 400 });
     }
@@ -90,7 +228,7 @@ export async function POST(request: NextRequest) {
     // 🔒 SECURITY: Verify user has access to this room
     const hasAccess = await verifyRoomAccess(userId, roomId);
     if (!hasAccess) {
-      console.warn(`🚨 Unauthorized message send attempt: User ${userId} tried to send to room ${roomId}`);
+
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
@@ -136,8 +274,16 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        // Only translate if needed
-        if (shouldTranslate) {
+        // 🚀 SENIOR DEVELOPER: Enhanced translation logic with file message detection
+        // Check if this is a file message (should NOT be translated)
+        const isFileMessage = sanitizedMessage.startsWith('📎 Shared a file:') ||
+                             sanitizedMessage.includes('📁') ||
+                             sanitizedMessage.includes('🖼️') ||
+                             sanitizedMessage.includes('🎵') ||
+                             sanitizedMessage.includes('🎬');
+
+        // Only translate if needed AND it's not a file message
+        if (shouldTranslate && !isFileMessage) {
           console.log('🔄 Languages differ, translating message server-side...');
           const translationService = getTranslationService();
           const result = await translationService.translateText(
@@ -156,6 +302,9 @@ export async function POST(request: NextRequest) {
             messageLength: sanitizedMessage.length,
             translatedLength: translatedMessage.length
           });
+        } else if (isFileMessage) {
+          console.log('📎 File message detected - skipping translation');
+          translatedMessage = sanitizedMessage; // Keep original file message
         } else {
           console.log('ℹ️ Same language detected, no translation needed');
         }
@@ -185,13 +334,13 @@ export async function POST(request: NextRequest) {
       sender_clerk_id: userId
     };
 
-    console.log('📡 Auto-broadcasting message to room:', roomId);
+
 
     // Auto-broadcast via Socket.IO (primary) and SSE (fallback)
     try {
       // Socket.IO broadcast (if available)
       if (global.io) {
-        console.log('📡 Broadcasting via Socket.IO');
+
         global.io.to(`room_${roomId}`).except(`user_${userId}`).emit('new_message', {
           type: 'new_message',
           payload: {
@@ -209,7 +358,7 @@ export async function POST(request: NextRequest) {
           },
           timestamp: new Date().toISOString()
         });
-        console.log('✅ Socket.IO broadcast completed');
+
       }
     } catch (socketError) {
       console.error('❌ Socket.IO broadcast failed:', socketError);
@@ -230,13 +379,13 @@ export async function POST(request: NextRequest) {
         sender_avatar: senderInfo[0]?.avatar_url || '',
         auto_triggered: true
       }, userId);
-      console.log('✅ SSE broadcast completed');
+
     } catch (sseError) {
       console.error('❌ SSE broadcast failed:', sseError);
     }
 
     // 🚀 VAPID PUSH NOTIFICATION - GUARANTEED INSTANT DELIVERY!
-    console.log('🔔 Sending VAPID push notification for guaranteed delivery...');
+
 
     // Get room participants to send push notifications
     const participants = await sql`
@@ -289,8 +438,19 @@ export async function POST(request: NextRequest) {
 // Get messages for a room
 export async function GET(request: NextRequest) {
   try {
-    // 🔒 SECURITY: Authentication check
-    const { userId } = await auth();
+    // 🔒 SECURITY: Authentication check with error handling
+    let userId: string | null = null;
+    try {
+      const authResult = await auth();
+      userId = authResult.userId;
+    } catch (authError) {
+      console.error('❌ Clerk authentication error in GET:', authError);
+      return NextResponse.json({
+        error: 'Authentication service unavailable',
+        details: 'Please try again later'
+      }, { status: 503 });
+    }
+
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -317,7 +477,15 @@ export async function GET(request: NextRequest) {
     const hasAccess = await verifyRoomAccess(userId, roomId);
     if (!hasAccess) {
       logUnauthorizedAccess(userId, clientIP, `room:${roomId}`, request.headers.get('user-agent') || undefined);
-      console.warn(`🚨 Unauthorized room access attempt: User ${userId} tried to access room ${roomId}`);
+      secureLogger.logCriticalSecurity(
+        SecurityEventType.AUTHORIZATION_FAILURE,
+        'Unauthorized room access attempt blocked',
+        {
+          userId: userId.substring(0, 8) + '***',
+          roomId: roomId.substring(0, 12) + '***',
+          action: 'BLOCKED'
+        }
+      );
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 

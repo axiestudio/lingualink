@@ -374,8 +374,7 @@ function generateRoomIdSync(userId1: string, userId2: string): string {
 export async function getOrCreateRoom(currentUserId: string, targetUserId: string) {
   try {
     const roomId = generateRoomIdSync(currentUserId, targetUserId);
-    console.log(`🔍 Looking for room between ${currentUserId} and ${targetUserId}`);
-    console.log(`🏠 Generated room ID: ${roomId}`);
+
 
     // Check if room exists
     const existingRoom = await sql`
@@ -402,7 +401,7 @@ export async function getOrCreateRoom(currentUserId: string, targetUserId: strin
       return existingRoom[0];
     }
 
-    console.log(`🆕 No existing room found, creating new room: ${roomId}`);
+
 
     // Create new room
     const newRoom = await sql`
@@ -436,7 +435,7 @@ export async function getOrCreateRoom(currentUserId: string, targetUserId: strin
       GROUP BY r.id, r.room_id, r.created_by, r.created_at, r.updated_at, r.last_activity
     `;
 
-    console.log("✅ New room created:", roomWithParticipants[0]);
+
     return roomWithParticipants[0];
   } catch (error) {
     console.error("❌ Error getting/creating room:", error);

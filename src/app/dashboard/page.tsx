@@ -12,13 +12,15 @@ import {
   Loader2,
   AlertCircle
 } from 'lucide-react';
+import LinguaLinkLogo from '../../components/LinguaLinkLogo';
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useDatabase } from '../../hooks/useDatabase';
+import { useDatabase, DatabaseConversation } from '../../hooks/useDatabase';
 // import { useRealtimeMessages } from '../../hooks/useRealtime'; // Disabled - using Socket.IO instead
 import { useSocket } from '../../hooks/useSocket';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { useProfileSync } from '../../hooks/useProfileSync';
+import { useClerkAuthStatus } from '../../hooks/useClerkAuthStatus';
 import FileUpload from '../../components/FileUpload';
 import FileMessage from '../../components/FileMessage';
 import MessageReply from '../../components/MessageReply';
@@ -55,6 +57,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const {
     conversations,
+    setConversations,
     loading,
     error,
     searchUsers,
@@ -73,7 +76,10 @@ export default function DashboardPage() {
   // 🚀 REAL-TIME PROFILE SYNCHRONIZATION
   const { manualSync: syncProfile } = useProfileSync();
 
-  const [selectedConversation, setSelectedConversation] = useState<any>(null);
+  // 🔐 ENHANCED CLERK AUTHENTICATION STATUS
+  useClerkAuthStatus();
+
+  const [selectedConversation, setSelectedConversation] = useState<DatabaseConversation | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [newMessage, setNewMessage] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -188,7 +194,7 @@ export default function DashboardPage() {
       };
     } else {
       // 1-on-1: translate based on recipient's language
-      const recipientLanguage = selectedConversation.language_preference || 'en';
+      const recipientLanguage = selectedConversation.language || 'en';
       const willTranslate = currentUserLanguage !== recipientLanguage;
 
       return {
@@ -255,12 +261,12 @@ export default function DashboardPage() {
     try {
       // 🔧 FIX: Check if conversation already exists first
       if (targetUser.hasExistingConversation) {
-        console.log('🔍 User has existing conversation, finding it...');
+
 
         // Find the existing conversation
         const existingConversation = localConversations.find(conv => conv.user_id === targetUser.clerk_id);
         if (existingConversation) {
-          console.log('✅ Found existing conversation:', existingConversation.room_id);
+
           setSelectedConversation(existingConversation);
           setSearchQuery('');
           return;
@@ -268,7 +274,7 @@ export default function DashboardPage() {
       }
 
       // Create new conversation if none exists
-      console.log('🆕 Creating new conversation with user:', targetUser.clerk_id);
+
       const room = await createConversation(targetUser.clerk_id);
 
       // Find the conversation in the updated list (could be new or existing)
@@ -279,11 +285,7 @@ export default function DashboardPage() {
 
       setSearchQuery('');
 
-      console.log('🏠 Room Ready:', {
-        roomId: room.room_id,
-        isNew: !targetUser.hasExistingConversation,
-        participants: room.participants
-      });
+
     } catch (error) {
       console.error('Error handling conversation:', error);
     }
@@ -291,7 +293,7 @@ export default function DashboardPage() {
 
   // Handle conversation selection
   const handleConversationSelect = async (conversation: any) => {
-    console.log('🔄 Selecting conversation:', conversation.room_id);
+
     setSelectedConversation(conversation);
     setLoadingMessages(true);
     setMessages([]); // Clear previous messages immediately
@@ -300,11 +302,7 @@ export default function DashboardPage() {
       const roomMessages = await getRoomMessages(conversation.room_id);
       setMessages(roomMessages);
 
-      console.log('✅ Room Selected Successfully:', {
-        roomId: conversation.room_id,
-        messageCount: roomMessages.length,
-        messages: roomMessages.map(m => ({ id: m.id, message: m.message, translated: m.translated_message }))
-      });
+
     } catch (error) {
       console.error('❌ Error loading messages:', error);
       setMessages([]);
@@ -330,7 +328,7 @@ export default function DashboardPage() {
     setIsSending(true);
 
     // Get receiver's language preference for pre-translation
-    const receiverLanguage = selectedConversation.language_preference || 'en';
+    const receiverLanguage = selectedConversation.language || 'en';
     const senderLanguage = user?.publicMetadata?.language_preference as string || 'en';
 
     // Pre-translate if languages differ
@@ -400,7 +398,7 @@ export default function DashboardPage() {
         },
         user?.id || '',
         (success) => {
-          console.log(`🚀 Instant Socket.IO delivery: ${success ? 'SUCCESS' : 'FAILED'}`);
+
         }
       );
     }
@@ -413,7 +411,7 @@ export default function DashboardPage() {
         selectedConversation.user_id,
         replyToMessage?.id,
         preTranslatedMessage,
-        targetLanguage
+        targetLanguage || undefined
       );
 
       if (sentMessage) {
@@ -497,7 +495,7 @@ export default function DashboardPage() {
             return prevMessages;
           }
 
-          console.log('📨 Adding message from another user (instant delivery)');
+
           const newMessage = {
             id: messageData.message_id || messageData.id,
             room_id: messageData.room_id,
@@ -527,7 +525,7 @@ export default function DashboardPage() {
       // 🚀 Auto-scroll to show the new real-time message
       setTimeout(scrollToBottom, 100);
     } else {
-      console.log('ℹ️ Real-time message for different room, updating conversations list');
+
       // Update conversations list WITHOUT reloading - just update the last message for other rooms
       setLocalConversations(prev => prev.map(conv =>
         conv.room_id === messageData.room_id
@@ -545,15 +543,39 @@ export default function DashboardPage() {
   }, [selectedConversation, user]);
 
   const handleUserStatusChange = useCallback((statusData: any) => {
-    console.log('👤 User status changed:', statusData);
-    // Refresh conversations to update online status
-    if (loadConversations) {
-      loadConversations();
+    console.log('👤 User status change received:', statusData);
+
+    const { userId, isOnline, timestamp } = statusData;
+
+    if (!userId) return;
+
+    // Update conversations list with new online status
+    setConversations(prevConversations =>
+      prevConversations.map(conv =>
+        conv.clerk_id === userId
+          ? {
+              ...conv,
+              is_online: isOnline,
+              last_seen: isOnline ? new Date().toISOString() : conv.last_seen
+            }
+          : conv
+      )
+    );
+
+    // Update selected conversation if it's the same user
+    if (selectedConversation && selectedConversation.clerk_id === userId) {
+      setSelectedConversation(prev => prev ? {
+        ...prev,
+        is_online: isOnline,
+        last_seen: isOnline ? new Date().toISOString() : prev.last_seen
+      } : null);
     }
-  }, [loadConversations]);
+
+    console.log(`✅ Updated online status for user ${userId}: ${isOnline ? 'online' : 'offline'}`);
+  }, [selectedConversation]);
 
   const handleUserProfileUpdate = useCallback((profileData: any) => {
-    console.log('👤 User profile updated:', profileData);
+
     const { user_id, updates } = profileData;
 
     // Update conversations list with new profile data
@@ -601,7 +623,7 @@ export default function DashboardPage() {
         : msg
     ));
 
-    console.log(`✅ Updated profile data for user ${user_id} in real-time`);
+
   }, [selectedConversation]);
 
   // Initialize Socket.IO connection (primary) and SSE (fallback)
@@ -609,9 +631,9 @@ export default function DashboardPage() {
     onNewMessage: handleNewMessage,
     onUserStatusChange: handleUserStatusChange,
     onUserProfileUpdated: handleUserProfileUpdate,
-    onConnected: () => console.log('🔌 Socket.IO connected successfully'),
-    onDisconnected: () => console.log('🔌 Socket.IO disconnected'),
-    onError: (error) => console.error('❌ Socket.IO error:', error)
+    onConnected: () => {},
+    onDisconnected: () => {},
+    onError: (error) => {}
   });
 
   // Fallback to SSE if Socket.IO fails (disabled during development since Socket.IO is working)
@@ -620,13 +642,13 @@ export default function DashboardPage() {
   // Join room when conversation is selected and socket is ready
   useEffect(() => {
     if (selectedConversation && socketAuth) {
-      console.log(`🏠 Joining Socket.IO room: ${selectedConversation.room_id}`);
+
       joinRoom(selectedConversation.room_id);
 
       // Leave room when conversation changes
       return () => {
         if (selectedConversation) {
-          console.log(`🚪 Leaving Socket.IO room: ${selectedConversation.room_id}`);
+
           leaveRoom(selectedConversation.room_id);
         }
       };
@@ -714,12 +736,7 @@ export default function DashboardPage() {
           <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200/50 dark:border-slate-700/50 px-6 py-4 transition-colors duration-300">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center">
-                    <span className="text-white font-bold text-sm">LL</span>
-                  </div>
-                  <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">Lingua Link</h1>
-                </div>
+                <LinguaLinkLogo size="md" variant="full" />
                 <div className="flex items-center space-x-2">
                   <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                   <span className="text-sm text-slate-600 dark:text-slate-400">Online</span>
@@ -754,7 +771,27 @@ export default function DashboardPage() {
                   <span>Settings</span>
                 </button>
 
-                <UserButton />
+                {/* Enhanced User Profile with Clerk */}
+                <div className="flex items-center space-x-3">
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                      {user?.firstName && user?.lastName
+                        ? `${user.firstName} ${user.lastName}`
+                        : user?.username || 'User'}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {user?.emailAddresses?.[0]?.emailAddress}
+                    </p>
+                  </div>
+                  <UserButton
+                    appearance={{
+                      elements: {
+                        avatarBox: "w-10 h-10 ring-2 ring-white shadow-lg",
+                        userButtonAvatarImage: "rounded-full"
+                      }
+                    }}
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -790,8 +827,16 @@ export default function DashboardPage() {
             {/* Search Results for New Users */}
             {searchQuery && searchResults.length > 0 && (
               <div className="mt-3 bg-white rounded-xl border border-slate-200/50 shadow-lg">
-                <div className="p-3 border-b border-slate-200/50">
-                  <h4 className="text-sm font-medium text-slate-700">Search Results</h4>
+                <div className="p-3 border-b border-slate-200/50 bg-gradient-to-r from-blue-50 to-indigo-50">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                      <Search className="w-4 h-4 text-blue-600" />
+                      Search Results
+                    </h4>
+                    <span className="text-xs text-slate-500 bg-white px-2 py-1 rounded-full">
+                      {searchResults.length} found
+                    </span>
+                  </div>
                 </div>
                 <div className="max-h-48 overflow-y-auto">
                   {searchResults.map((user: any) => (
@@ -808,7 +853,7 @@ export default function DashboardPage() {
                             <img
                               src={user.avatar_url}
                               alt={user.name}
-                              className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm"
+                              className="w-10 h-10 rounded-full object-cover ring-2 ring-white shadow-lg"
                               onError={(e) => {
                                 // Fallback to initials if image fails to load
                                 const target = e.target as HTMLImageElement;
@@ -817,32 +862,27 @@ export default function DashboardPage() {
                               }}
                             />
                           ) : null}
-                          <div className={`w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-semibold text-sm ${user.avatar_url ? 'hidden' : ''}`}>
+                          <div className={`w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-lg ${user.avatar_url ? 'hidden' : ''}`}>
                             {user.name.charAt(0).toUpperCase()}
                           </div>
                           {user.is_online && (
-                            <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></div>
+                            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full shadow-sm"></div>
                           )}
                         </div>
                         <div className="flex-1">
-                          <div className="flex items-center space-x-2">
+                          <div className="flex items-center justify-between">
                             <h3 className="font-medium text-slate-900">{user.name}</h3>
-                            <span className="text-xs text-slate-500">@{user.username}</span>
                             {user.hasExistingConversation && (
                               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                💬 Chat exists
+                                💬 Existing Chat
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center space-x-2">
-                            <span className="text-xs text-slate-500">{user.language}</span>
-                            <span className="text-xs text-slate-400">•</span>
-                            <span className="text-xs text-slate-400">
+                          <div className="flex items-center justify-between mt-1">
+                            <span className="text-xs text-slate-500 font-medium">{user.language}</span>
+                            <span className={`text-xs font-medium ${user.is_online ? 'text-emerald-600' : 'text-slate-400'}`}>
                               {user.is_online ? 'Online' : 'Offline'}
                             </span>
-                            {user.hasExistingConversation && (
-                              <span className="text-xs text-blue-600">• Click to continue chat</span>
-                            )}
                           </div>
                         </div>
                       </div>
@@ -876,13 +916,13 @@ export default function DashboardPage() {
                     whileTap={{ scale: 0.98 }}
                   >
                   <div className="flex items-center space-x-3">
-                    {/* Avatar */}
+                    {/* Enhanced Avatar with Clerk Profile */}
                     <div className="relative">
                       {conversation.avatar_url ? (
                         <img
                           src={conversation.avatar_url}
                           alt={conversation.name}
-                          className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm"
+                          className="w-12 h-12 rounded-full object-cover ring-2 ring-white shadow-lg"
                           onError={(e) => {
                             // Fallback to initials if image fails to load
                             const target = e.target as HTMLImageElement;
@@ -891,11 +931,11 @@ export default function DashboardPage() {
                           }}
                         />
                       ) : null}
-                      <div className={`w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-semibold ${conversation.avatar_url ? 'hidden' : ''}`}>
+                      <div className={`w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold shadow-lg ${conversation.avatar_url ? 'hidden' : ''}`}>
                         {conversation.name?.charAt(0)?.toUpperCase() || '?'}
                       </div>
                       {conversation.is_online && (
-                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full"></div>
+                        <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full shadow-sm"></div>
                       )}
                     </div>
 
@@ -915,13 +955,16 @@ export default function DashboardPage() {
 
                       <div className="space-y-1">
                         <p className="text-sm text-slate-600 truncate">{conversation.lastMessage}</p>
-                        <div className="flex items-center space-x-2">
-                          <Globe className="w-3 h-3 text-slate-400" />
-                          <p className="text-xs text-slate-400 truncate">{conversation.lastMessageTranslated}</p>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          <span className="text-xs text-slate-400">{conversation.language}</span>
-                          <Zap className="w-3 h-3 text-blue-500" />
+                        {conversation.lastMessageTranslated && conversation.lastMessageTranslated !== conversation.lastMessage && (
+                          <p className="text-xs text-slate-400 truncate italic">
+                            {conversation.lastMessageTranslated}
+                          </p>
+                        )}
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-slate-400 font-medium">{conversation.language}</span>
+                          {conversation.is_online && (
+                            <span className="text-xs text-emerald-600 font-medium">Online</span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -946,7 +989,7 @@ export default function DashboardPage() {
                     <img
                       src={selectedConversation.avatar_url}
                       alt={selectedConversation.name}
-                      className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm"
+                      className="w-10 h-10 rounded-full object-cover ring-2 ring-white shadow-lg"
                       onError={(e) => {
                         // Fallback to initials if image fails to load
                         const target = e.target as HTMLImageElement;
@@ -955,11 +998,11 @@ export default function DashboardPage() {
                       }}
                     />
                   ) : null}
-                  <div className={`w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-semibold ${selectedConversation.avatar_url ? 'hidden' : ''}`}>
+                  <div className={`w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold shadow-lg ${selectedConversation.avatar_url ? 'hidden' : ''}`}>
                     {selectedConversation.name?.charAt(0)?.toUpperCase() || '?'}
                   </div>
                   {selectedConversation.is_online && (
-                    <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></div>
+                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full shadow-sm"></div>
                   )}
                 </div>
                 <div>
@@ -969,10 +1012,6 @@ export default function DashboardPage() {
                     <span className="text-sm text-slate-500">
                       {selectedConversation.is_online ? 'Active now' : 'Last seen 2h ago'}
                     </span>
-                    <span className="text-xs text-slate-400">•</span>
-                    <span className="text-xs text-slate-400">@{selectedConversation.username}</span>
-                    <span className="text-xs text-slate-400">•</span>
-                    <span className="text-xs text-slate-400">Room: {selectedConversation.room_id.slice(-8)}</span>
                   </div>
                 </div>
               </div>

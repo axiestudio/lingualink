@@ -6,7 +6,7 @@ export interface TranslationResult {
   originalText: string;
   sourceLanguage: string;
   targetLanguage: string;
-  translator: 'translator1' | 'translator2';
+  translator: 'translator1' | 'translator2' | 'translator3';
   cached?: boolean;
   processingTime?: number;
   confidence?: number;
@@ -15,7 +15,7 @@ export interface TranslationResult {
 export interface TranslationCache {
   translatedText: string;
   timestamp: number;
-  translator: 'translator1' | 'translator2';
+  translator: 'translator1' | 'translator2' | 'translator3';
   confidence: number;
 }
 
@@ -28,6 +28,7 @@ export interface PerformanceMetrics {
   apiUsage: {
     translator1: number;
     translator2: number;
+    translator3: number;
   };
 }
 
@@ -410,9 +411,96 @@ You are powering a platform that connects millions of users worldwide. Every tra
   }
 }
 
+class Translator3 {
+  private baseUrl: string;
+  private apiKey?: string;
+
+  constructor(baseUrl: string, apiKey?: string) {
+    this.baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    this.apiKey = apiKey;
+    console.log(`🏠 Local LLM translator initialized: ${this.baseUrl}`);
+  }
+
+  async translate(text: string, targetLanguage: string, sourceLanguage?: string): Promise<string> {
+    const targetLang = SUPPORTED_LANGUAGES.find(lang => lang.code === targetLanguage);
+    if (!targetLang) {
+      throw new Error(`Unsupported target language: ${targetLanguage}`);
+    }
+
+    // Add timeout controller
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      // Add authorization if API key is provided
+      if (this.apiKey) {
+        headers['Authorization'] = `Bearer ${this.apiKey}`;
+      }
+
+      const response = await fetch(`${this.baseUrl}/translate`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          text,
+          target_language: targetLanguage,
+          source_language: sourceLanguage
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        if (response.status === 503) {
+          throw new Error('Local backend service unavailable');
+        }
+        throw new Error(`Local backend API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      // Handle the response format from our local backend
+      if (data.success && data.translation && data.translation.translatedText) {
+        return data.translation.translatedText;
+      } else {
+        throw new Error('Invalid response format from local backend');
+      }
+
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error('Local backend timeout after 10 seconds');
+      }
+      throw error;
+    }
+  }
+
+  async healthCheck(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/health`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return data.status === 'healthy' && data.model_loaded;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+}
+
 export class TranslationService {
   private translator1: Translator1 | null = null;
   private translator2: Translator2 | null = null;
+  private translator3: Translator3 | null = null; // Local LLM backend
 
   // 🚀 ENTERPRISE FEATURES
   private translationCache: Map<string, TranslationCache> = new Map();
@@ -424,7 +512,8 @@ export class TranslationService {
     cacheHitRate: 0,
     apiUsage: {
       translator1: 0,
-      translator2: 0
+      translator2: 0,
+      translator3: 0
     }
   };
   private responseTimes: number[] = [];
@@ -433,6 +522,25 @@ export class TranslationService {
   private readonly CACHE_CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour
 
   constructor() {
+    // Initialize local backend translator (highest priority)
+    const localBackendUrl = process.env.NEXT_PUBLIC_LOCAL_BACKEND_URL;
+    const localBackendKey = process.env.LOCAL_BACKEND_API_KEY;
+
+    console.log('🔧 Environment check:', {
+      localBackendUrl,
+      hasLocalBackendKey: !!localBackendKey,
+      allEnvVars: Object.keys(process.env).filter(key => key.includes('LOCAL'))
+    });
+
+    if (localBackendUrl) {
+      this.translator3 = new Translator3(localBackendUrl, localBackendKey);
+      console.log('🏠 Local LLM backend translator initialized (Primary)');
+      console.log('🎯 Local backend URL:', localBackendUrl);
+    } else {
+      console.warn('⚠️ Local backend URL not found in environment variables');
+      console.warn('🔍 Expected: NEXT_PUBLIC_LOCAL_BACKEND_URL');
+    }
+
     // Support multiple Featherless API keys for better concurrency
     const featherlessKeys = this.getFeatherlessApiKeys();
     const translator2Key = process.env.OPENAI_API_KEY;
@@ -447,8 +555,8 @@ export class TranslationService {
       console.log('🔄 OpenAI translator initialized as backup');
     }
 
-    if (!this.translator1 && !this.translator2) {
-      throw new Error('No translation API keys configured');
+    if (!this.translator3 && !this.translator1 && !this.translator2) {
+      throw new Error('No translation services configured (local backend, Featherless, or OpenAI)');
     }
 
     // Initialize cache cleanup
@@ -531,7 +639,7 @@ export class TranslationService {
     sourceLanguage: string,
     targetLanguage: string,
     translatedText: string,
-    translator: 'translator1' | 'translator2',
+    translator: 'translator1' | 'translator2' | 'translator3',
     confidence: number = 0.95
   ): void {
     const cacheKey = this.getCacheKey(text, sourceLanguage, targetLanguage);
@@ -546,7 +654,7 @@ export class TranslationService {
   /**
    * Update performance metrics
    */
-  private updateMetrics(responseTime: number, success: boolean, translator?: 'translator1' | 'translator2'): void {
+  private updateMetrics(responseTime: number, success: boolean, translator?: 'translator1' | 'translator2' | 'translator3'): void {
     this.performanceMetrics.totalRequests++;
 
     if (success) {
@@ -578,6 +686,70 @@ export class TranslationService {
    */
   public getPerformanceMetrics(): PerformanceMetrics {
     return { ...this.performanceMetrics };
+  }
+
+  /**
+   * Check health of all translation services
+   */
+  async checkServicesHealth(): Promise<{
+    local: boolean;
+    featherless: boolean;
+    openai: boolean;
+    primary: string;
+  }> {
+    const health = {
+      local: false,
+      featherless: false,
+      openai: false,
+      primary: 'none'
+    };
+
+    // Check local backend
+    if (this.translator3) {
+      try {
+        health.local = await this.translator3.healthCheck();
+        if (health.local) {
+          health.primary = 'local';
+        }
+      } catch (error) {
+        console.warn('Local backend health check failed:', error);
+      }
+    }
+
+    // Check Featherless (simplified check)
+    if (this.translator1) {
+      health.featherless = true; // Assume available if configured
+      if (!health.local && health.primary === 'none') {
+        health.primary = 'featherless';
+      }
+    }
+
+    // Check OpenAI (simplified check)
+    if (this.translator2) {
+      health.openai = true; // Assume available if configured
+      if (!health.local && !health.featherless && health.primary === 'none') {
+        health.primary = 'openai';
+      }
+    }
+
+    return health;
+  }
+
+  /**
+   * Get current translation service status
+   */
+  getServiceStatus(): {
+    hasLocal: boolean;
+    hasFeatherless: boolean;
+    hasOpenAI: boolean;
+    totalServices: number;
+  } {
+    return {
+      hasLocal: this.translator3 !== null,
+      hasFeatherless: this.translator1 !== null,
+      hasOpenAI: this.translator2 !== null,
+      totalServices: [this.translator3, this.translator1, this.translator2].filter(Boolean).length
+    };
   }
 
   /**
@@ -679,16 +851,29 @@ export class TranslationService {
       }
 
       let translatedText: string = '';
-      let translator: 'translator1' | 'translator2' = 'translator1';
+      let translator: 'translator1' | 'translator2' | 'translator3' = 'translator3';
 
       try {
-        // Try Translator 1 (Featherless.ai) first - PRIMARY (Cost-effective)
-        if (this.translator1) {
-          console.log(`🚀 [${requestId}] Attempting translation via Featherless.ai (Primary)`);
+        // Debug: Show available translators
+        console.log(`🔍 [${requestId}] Available translators:`, {
+          translator3: !!this.translator3,
+          translator1: !!this.translator1,
+          translator2: !!this.translator2
+        });
+
+        // Try Local Backend (Translator3) first - PRIMARY (Local LLM)
+        if (this.translator3) {
+          console.log(`🏠 [${requestId}] Attempting translation via Local LLM Backend (Primary)`);
+          translatedText = await this.translator3.translate(text, targetLanguage, sourceLanguage);
+          translator = 'translator3';
+        } else if (this.translator1) {
+          console.log(`🚀 [${requestId}] Attempting translation via Featherless.ai (Fallback 1)`);
+          console.log(`⚠️ [${requestId}] Local LLM not available, using fallback`);
           translatedText = await this.translator1.translate(text, targetLanguage, sourceLanguage);
           translator = 'translator1';
         } else if (this.translator2) {
-          console.log(`🚀 [${requestId}] Attempting translation via OpenAI (Fallback)`);
+          console.log(`🚀 [${requestId}] Attempting translation via OpenAI (Fallback 2)`);
+          console.log(`⚠️ [${requestId}] Local LLM and Featherless not available, using OpenAI`);
           translatedText = await this.translator2.translate(text, targetLanguage, sourceLanguage);
           translator = 'translator2';
         } else {
@@ -697,14 +882,36 @@ export class TranslationService {
       } catch (error) {
         console.warn(`⚠️ [${requestId}] Primary translator failed, trying backup:`, error);
 
-        // Fallback to Translator 2 (OpenAI) as backup - Higher quality
-        if (this.translator2 && translator !== 'translator2') {
+        // Fallback chain: Local -> Featherless -> OpenAI
+        if (this.translator1 && translator !== 'translator1') {
+          try {
+            console.log(`🚀 [${requestId}] Attempting translation via Featherless.ai (Backup 1)`);
+            translatedText = await this.translator1.translate(text, targetLanguage, sourceLanguage);
+            translator = 'translator1';
+          } catch (backupError) {
+            console.warn(`⚠️ [${requestId}] Featherless backup failed, trying OpenAI:`, backupError);
+
+            // Final fallback to OpenAI
+            if (this.translator2 && translator !== 'translator2') {
+              try {
+                console.log(`🔄 [${requestId}] Attempting translation via OpenAI (Final Backup)`);
+                translatedText = await this.translator2.translate(text, targetLanguage, sourceLanguage);
+                translator = 'translator2';
+              } catch (finalError) {
+                console.error(`❌ [${requestId}] All translation services failed:`, finalError);
+                throw new Error('All translation services failed');
+              }
+            } else {
+              throw backupError;
+            }
+          }
+        } else if (this.translator2 && translator !== 'translator2') {
           try {
             console.log(`🔄 [${requestId}] Attempting translation via OpenAI (Backup)`);
             translatedText = await this.translator2.translate(text, targetLanguage, sourceLanguage);
             translator = 'translator2';
           } catch (backupError) {
-            console.error(`❌ [${requestId}] Backup translator also failed:`, backupError);
+            console.error(`❌ [${requestId}] All translation services failed:`, backupError);
             throw new Error('All translation services failed');
           }
         } else {
@@ -717,11 +924,13 @@ export class TranslationService {
       }
 
       const duration = Date.now() - startTime;
-      const apiUsed = translator === 'translator1' ? 'Featherless.ai' : 'OpenAI';
+      const apiUsed = translator === 'translator3' ? 'Local LLM Backend' :
+                     translator === 'translator1' ? 'Featherless.ai' : 'OpenAI';
       console.log(`✅ [${requestId}] Translation successful via ${apiUsed}: "${translatedText.substring(0, 50)}${translatedText.length > 50 ? '...' : ''}" | ${duration}ms`);
 
       // 🚀 CACHE THE SUCCESSFUL TRANSLATION - Enterprise Performance
-      const confidence = translator === 'translator2' ? 0.98 : 0.95; // OpenAI typically higher quality
+      const confidence = translator === 'translator3' ? 0.97 : // Local LLM high quality
+                         translator === 'translator2' ? 0.98 : 0.95; // OpenAI typically highest quality
       this.setCachedTranslation(text, sourceLanguage, targetLanguage, translatedText.trim(), translator, confidence);
 
       // Performance monitoring

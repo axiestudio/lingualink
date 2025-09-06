@@ -35,7 +35,7 @@ export default function SmoothMessageTransition({
       y: 0,
       scale: 1,
       transition: {
-        type: "spring",
+        type: "spring" as const,
         stiffness: 500,
         damping: 30,
         mass: 1
@@ -63,7 +63,7 @@ export default function SmoothMessageTransition({
       y: 0,
       scale: 1,
       transition: {
-        type: "spring",
+        type: "spring" as const,
         stiffness: 400,
         damping: 25,
         mass: 0.8
@@ -73,7 +73,7 @@ export default function SmoothMessageTransition({
       scale: [1, 1.02, 1],
       transition: {
         duration: 0.3,
-        ease: "easeInOut"
+        ease: "easeInOut" as const
       }
     }
   };
@@ -141,10 +141,10 @@ export function TranslationUpdateWrapper({
     },
     visible: {
       opacity: 1,
-      height: 'auto',
+      height: 'auto' as const,
       y: 0,
       transition: {
-        type: "spring",
+        type: "spring" as const,
         stiffness: 300,
         damping: 30
       }
@@ -154,7 +154,7 @@ export function TranslationUpdateWrapper({
       scale: [0.98, 1],
       transition: {
         duration: 0.4,
-        ease: "easeOut"
+        ease: "easeOut" as const
       }
     }
   };

@@ -94,18 +94,24 @@ export default function FileMessage({ fileMetadata, message, showPreview = true,
         <p className="text-sm text-slate-700 mb-2">{message}</p>
       )}
 
-      {/* File Attachment */}
-      <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 max-w-sm">
-        {/* Image Preview */}
+      {/* Enhanced File Attachment */}
+      <div className="bg-gradient-to-br from-slate-50 to-gray-50 border border-slate-200/50 rounded-xl p-4 max-w-sm shadow-sm hover:shadow-md transition-shadow duration-200">
+        {/* Enhanced Image Preview */}
         {isImage && showPreview && !imageError && (
-          <div className="mb-3">
+          <div className="mb-4 relative group">
             <img
               src={fileMetadata.uploadPath}
               alt={fileMetadata.originalName}
-              className="w-full h-48 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+              className="w-full h-48 object-cover rounded-xl cursor-pointer hover:opacity-95 transition-all duration-200 shadow-sm"
               onClick={() => setIsPreviewOpen(true)}
               onError={() => setImageError(true)}
             />
+            {/* Overlay on hover */}
+            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 rounded-xl transition-all duration-200 flex items-center justify-center">
+              <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white bg-opacity-90 rounded-full p-2">
+                <Eye className="w-5 h-5 text-slate-700" />
+              </div>
+            </div>
           </div>
         )}
 
@@ -124,12 +130,47 @@ export default function FileMessage({ fileMetadata, message, showPreview = true,
         {/* Audio Preview */}
         {isAudio && showPreview && (
           <div className="mb-3">
-            <audio
-              src={fileMetadata.uploadPath}
-              className="w-full"
-              controls
-              preload="metadata"
-            />
+            <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg p-4">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2 bg-purple-100 rounded-lg">
+                  <Music className="w-5 h-5 text-purple-600" />
+                </div>
+                <div>
+                  <p className="font-medium text-purple-900">{fileMetadata.originalName}</p>
+                  <p className="text-sm text-purple-600">{formatFileSize(fileMetadata.fileSize)}</p>
+                </div>
+              </div>
+              <audio
+                src={fileMetadata.uploadPath}
+                className="w-full"
+                controls
+                preload="metadata"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Document Preview */}
+        {fileType === 'document' && showPreview && (
+          <div className="mb-3">
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <FileText className="w-5 h-5 text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium text-blue-900">{fileMetadata.originalName}</p>
+                  <p className="text-sm text-blue-600">{formatFileSize(fileMetadata.fileSize)} • {getFileExtension(fileMetadata.originalName)}</p>
+                </div>
+                <button
+                  onClick={() => window.open(fileMetadata.uploadPath, '_blank')}
+                  className="p-2 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors"
+                  title="Open document"
+                >
+                  <ExternalLink className="w-4 h-4 text-blue-600" />
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

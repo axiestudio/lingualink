@@ -1,5 +1,6 @@
 import { Server as SocketIOServer } from 'socket.io';
 import { neon } from '@neondatabase/serverless';
+import { secureLogger, SecurityEventType, SecuritySeverity } from './secure-logger';
 
 const sql = neon(process.env.DATABASE_URL!);
 
@@ -66,11 +67,21 @@ class SocketIOManager {
       socket.on('authenticate', async (data: { userId: string, sessionToken?: string }) => {
         try {
           const { userId, sessionToken } = data;
-          console.log(`🔐 User authenticating: ${userId} (socket: ${socket.id})`);
+          secureLogger.logInfoSecurity(
+            SecurityEventType.AUTHENTICATION_SUCCESS,
+            'User authentication attempt',
+            {
+              userId: userId.substring(0, 8) + '***',
+              socketId: socket.id.substring(0, 8) + '***'
+            }
+          );
 
           // Validate Clerk session token
           if (!sessionToken) {
-            console.error('❌ No session token provided');
+            secureLogger.logWarningSecurity(
+              SecurityEventType.AUTHENTICATION_FAILURE,
+              'Authentication failed: No session token provided'
+            );
             socket.emit('authentication_error', { error: 'Session token required' });
             return;
           }
@@ -78,7 +89,11 @@ class SocketIOManager {
           // Verify session with Clerk
           const isValidSession = await this.validateClerkSession(userId, sessionToken);
           if (!isValidSession) {
-            console.error('❌ Invalid Clerk session');
+            secureLogger.logWarningSecurity(
+              SecurityEventType.AUTHENTICATION_FAILURE,
+              'Authentication failed: Invalid Clerk session',
+              { userId: userId.substring(0, 8) + '***' }
+            );
             socket.emit('authentication_error', { error: 'Invalid session' });
             return;
           }
@@ -114,15 +129,78 @@ class SocketIOManager {
         }
       });
 
-      // Handle joining room for real-time messaging
-      socket.on('join_room', (data: { roomId: string }) => {
+      // 🔒 ENHANCED ROOM JOINING WITH MULTI-LAYER SECURITY
+      socket.on('join_room', async (data: { roomId: string }) => {
         const { roomId } = data;
         const userId = this.socketUsers.get(socket.id);
-        
-        if (userId) {
+
+        if (!userId) {
+          secureLogger.logWarningSecurity(
+            SecurityEventType.AUTHORIZATION_FAILURE,
+            'Room join attempt without authentication',
+            { roomId: roomId?.substring(0, 12) + '***' }
+          );
+          socket.emit('room_join_error', { error: 'Not authenticated' });
+          return;
+        }
+
+        // 🔒 SECURITY LAYER 1: Verify user has access to this room
+        try {
+          const hasAccess = await this.verifyRoomAccess(userId, roomId);
+          if (!hasAccess) {
+            secureLogger.logCriticalSecurity(
+              SecurityEventType.AUTHORIZATION_FAILURE,
+              'Unauthorized room join attempt blocked',
+              {
+                userId: userId.substring(0, 8) + '***',
+                roomId: roomId.substring(0, 12) + '***',
+                action: 'BLOCKED'
+              }
+            );
+            socket.emit('room_join_error', { error: 'Access denied' });
+            return;
+          }
+
+          // 🔒 SECURITY LAYER 2: Verify room exists and is active
+          const roomExists = await this.verifyRoomExists(roomId);
+          if (!roomExists) {
+            secureLogger.logWarningSecurity(
+              SecurityEventType.AUTHORIZATION_FAILURE,
+              'Attempt to join non-existent room',
+              {
+                userId: userId.substring(0, 8) + '***',
+                roomId: roomId.substring(0, 12) + '***'
+              }
+            );
+            socket.emit('room_join_error', { error: 'Room not found' });
+            return;
+          }
+
+          // 🔒 SECURITY LAYER 3: Join room with verification
           socket.join(`room_${roomId}`);
-          console.log(`🏠 User ${userId} joined room: ${roomId}`);
+
+          secureLogger.logInfoSecurity(
+            SecurityEventType.DATA_ACCESS,
+            'User joined room successfully',
+            {
+              userId: userId.substring(0, 8) + '***',
+              roomId: roomId.substring(0, 12) + '***',
+              action: 'ROOM_JOIN'
+            }
+          );
+
           socket.emit('room_joined', { roomId, success: true });
+        } catch (error) {
+          secureLogger.logCriticalSecurity(
+            SecurityEventType.SYSTEM_ERROR,
+            'Room access verification failed',
+            {
+              userId: userId.substring(0, 8) + '***',
+              roomId: roomId?.substring(0, 12) + '***',
+              error: 'VERIFICATION_ERROR'
+            }
+          );
+          socket.emit('room_join_error', { error: 'Access verification failed' });
         }
       });
 
@@ -173,6 +251,41 @@ class SocketIOManager {
         socket.emit('pong');
       });
 
+      // Handle user logout event
+      socket.on('user_logout', async (data: { userId: string }) => {
+        try {
+          const { userId } = data;
+          console.log(`🚪 User logout event received: ${userId}`);
+
+          // Verify this socket belongs to the user
+          const socketUserId = this.socketUsers.get(socket.id);
+          if (socketUserId !== userId) {
+            console.warn(`⚠️ Logout attempt from wrong user: ${socketUserId} vs ${userId}`);
+            return;
+          }
+
+          // Update user offline status in database
+          await this.updateUserOnlineStatus(userId, false);
+
+          // Broadcast user offline status
+          this.broadcastUserStatus(userId, false);
+
+          // Remove mappings
+          this.userSockets.delete(userId);
+          this.socketUsers.delete(socket.id);
+
+          // Acknowledge logout
+          socket.emit('logout_acknowledged', { success: true, userId });
+
+          console.log(`✅ User ${userId} logged out successfully`);
+          console.log(`📊 Total connected users: ${this.userSockets.size}`);
+
+        } catch (error) {
+          console.error('❌ Error handling user logout:', error);
+          socket.emit('logout_error', { error: 'Logout failed' });
+        }
+      });
+
       // Handle disconnection
       socket.on('disconnect', async () => {
         console.log(`🔌 Socket.IO disconnection: ${socket.id}`);
@@ -207,24 +320,72 @@ class SocketIOManager {
     return this.io;
   }
 
-  // Broadcast new message to room participants
+  // 🔒 BULLETPROOF MESSAGE BROADCASTING WITH MULTI-LAYER SECURITY
   async broadcastMessage(roomId: string, messageData: any, senderUserId: string) {
     if (!this.io) return;
 
-    console.log(`📡 Broadcasting message to room ${roomId} via Socket.IO`);
-    
     try {
-      // Broadcast to room (excluding sender)
-      this.io.to(`room_${roomId}`).except(`user_${senderUserId}`).emit('new_message', {
-        type: 'new_message',
-        payload: messageData,
-        timestamp: new Date().toISOString()
+      // 🔒 SECURITY LAYER 1: Verify sender has access to room
+      const senderHasAccess = await this.verifyRoomAccess(senderUserId, roomId);
+      if (!senderHasAccess) {
+        secureLogger.logCriticalSecurity(
+          SecurityEventType.AUTHORIZATION_FAILURE,
+          'Message broadcast blocked: Sender lacks room access',
+          {
+            senderId: senderUserId.substring(0, 8) + '***',
+            roomId: roomId.substring(0, 12) + '***',
+            action: 'BLOCKED'
+          }
+        );
+        return;
+      }
+
+      // 🔒 SECURITY LAYER 2: Get verified room participants
+      const participants = await this.getRoomParticipants(roomId);
+
+      // 🔒 SECURITY LAYER 3: Only broadcast to verified participants (excluding sender)
+      const connectedParticipants = participants.filter(participantId => {
+        if (participantId === senderUserId) return false; // Exclude sender
+        const socketInfo = this.userSockets.get(participantId);
+        return socketInfo && this.io?.sockets.sockets.has(socketInfo.socketId);
       });
 
-      console.log(`✅ Message broadcasted to room ${roomId}`);
-      
+      // 🔒 SECURITY LAYER 4: Sanitize message data before broadcasting
+      const sanitizedMessageData = this.sanitizeMessageData(messageData);
+
+      // Broadcast only to verified, connected participants
+      connectedParticipants.forEach(participantId => {
+        const socketInfo = this.userSockets.get(participantId);
+        if (socketInfo) {
+          this.io?.to(socketInfo.socketId).emit('new_message', {
+            type: 'new_message',
+            payload: sanitizedMessageData,
+            timestamp: new Date().toISOString()
+          });
+        }
+      });
+
+      secureLogger.logInfoSecurity(
+        SecurityEventType.DATA_ACCESS,
+        'Message broadcast completed successfully',
+        {
+          senderId: senderUserId.substring(0, 8) + '***',
+          roomId: roomId.substring(0, 12) + '***',
+          recipientCount: connectedParticipants.length,
+          action: 'MESSAGE_BROADCAST'
+        }
+      );
+
     } catch (error) {
-      console.error('❌ Error broadcasting message:', error);
+      secureLogger.logCriticalSecurity(
+        SecurityEventType.SYSTEM_ERROR,
+        'Error during message broadcasting',
+        {
+          senderId: senderUserId?.substring(0, 8) + '***',
+          roomId: roomId?.substring(0, 12) + '***',
+          error: 'BROADCAST_ERROR'
+        }
+      );
     }
   }
 
@@ -253,6 +414,92 @@ class SocketIOManager {
     } catch (error) {
       console.error('❌ Error updating user online status:', error);
     }
+  }
+
+  // 🔒 SECURITY: Verify user has access to a specific room
+  private async verifyRoomAccess(userId: string, roomId: string): Promise<boolean> {
+    try {
+      const result = await sql`
+        SELECT 1 FROM room_participants
+        WHERE room_id = ${roomId} AND user_clerk_id = ${userId}
+        LIMIT 1
+      `;
+      return result.length > 0;
+    } catch (error) {
+      secureLogger.logCriticalSecurity(
+        SecurityEventType.SYSTEM_ERROR,
+        'Database error during room access verification',
+        { error: 'DB_ERROR' }
+      );
+      return false;
+    }
+  }
+
+  // 🔒 SECURITY: Verify room exists and is active
+  private async verifyRoomExists(roomId: string): Promise<boolean> {
+    try {
+      const result = await sql`
+        SELECT 1 FROM rooms
+        WHERE id = ${roomId}
+        LIMIT 1
+      `;
+      return result.length > 0;
+    } catch (error) {
+      secureLogger.logCriticalSecurity(
+        SecurityEventType.SYSTEM_ERROR,
+        'Database error during room existence verification',
+        { error: 'DB_ERROR' }
+      );
+      return false;
+    }
+  }
+
+  // 🔒 SECURITY: Get verified room participants
+  private async getRoomParticipants(roomId: string): Promise<string[]> {
+    try {
+      const result = await sql`
+        SELECT user_clerk_id FROM room_participants
+        WHERE room_id = ${roomId}
+      `;
+      return result.map((row: any) => row.user_clerk_id);
+    } catch (error) {
+      secureLogger.logCriticalSecurity(
+        SecurityEventType.SYSTEM_ERROR,
+        'Database error during room participants retrieval',
+        { error: 'DB_ERROR' }
+      );
+      return [];
+    }
+  }
+
+  // 🔒 SECURITY: Sanitize message data to prevent injection attacks
+  private sanitizeMessageData(messageData: any): any {
+    if (!messageData) return {};
+
+    // Create a sanitized copy
+    const sanitized = { ...messageData };
+
+    // Remove potentially dangerous properties
+    delete sanitized.script;
+    delete sanitized.onclick;
+    delete sanitized.onload;
+    delete sanitized.onerror;
+    delete sanitized.eval;
+    delete sanitized.innerHTML;
+    delete sanitized.outerHTML;
+
+    // Sanitize string properties
+    Object.keys(sanitized).forEach(key => {
+      if (typeof sanitized[key] === 'string') {
+        // Remove script tags and event handlers
+        sanitized[key] = sanitized[key]
+          .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+          .replace(/on\w+\s*=\s*["'][^"']*["']/gi, '')
+          .replace(/javascript:/gi, '');
+      }
+    });
+
+    return sanitized;
   }
 
   // Validate Clerk session token using Clerk's backend SDK
@@ -411,7 +658,7 @@ class SocketIOManager {
   broadcastUserProfileUpdate(userId: string, updates: any) {
     if (!this.io) return;
 
-    console.log(`📡 Broadcasting profile update for user ${userId} via Socket.IO`);
+
 
     try {
       // Broadcast to all connected clients (they'll filter based on their needs)
@@ -424,7 +671,7 @@ class SocketIOManager {
         }
       });
 
-      console.log(`✅ Profile update broadcasted for user ${userId}`);
+
 
     } catch (error) {
       console.error('❌ Error broadcasting profile update:', error);

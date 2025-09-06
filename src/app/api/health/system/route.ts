@@ -5,7 +5,26 @@ export async function GET() {
   try {
     console.log('🔍 Running system health check...');
     
-    const healthStatus = {
+    const healthStatus: {
+      status: string;
+      timestamp: string;
+      services: {
+        database: { status: string; details?: any; error?: string };
+        pushNotifications: { status: string; vapidConfigured?: boolean; subscribedUsers?: number; details?: any; error?: string };
+        serviceWorker: { status: string; message?: string; path?: string };
+        translation: { status: string; providers?: any; error?: string };
+      };
+      environment: {
+        nodeEnv: string | undefined;
+        nextjsVersion: string;
+      };
+      recommendations: Array<{
+        type: string;
+        service: string;
+        message: string;
+        action: string;
+      }>;
+    } = {
       status: 'healthy',
       timestamp: new Date().toISOString(),
       services: {

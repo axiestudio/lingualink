@@ -1,0 +1,49 @@
+# LinguaLink Local Backend Docker Compose
+# AS A SENIOR DEVELOPER - Easy deployment with Docker Compose
+
+version: '3.8'
+
+services:
+  lingualink-backend:
+    build: .
+    container_name: lingualink-local-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=false
+      - MODEL_TYPE=transformers
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./models:/app/models  # Mount for model persistence
+      - ./logs:/app/logs      # Mount for log persistence
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2.0'
+        reservations:
+          memory: 2G
+          cpus: '1.0'
+
+  # Optional: Add Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: lingualink-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+volumes:
+  redis_data:

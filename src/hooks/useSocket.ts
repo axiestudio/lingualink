@@ -123,6 +123,18 @@ export function useSocket(callbacks: SocketCallbacks = {}) {
       window.location.href = '/sign-in?session_expired=true';
     });
 
+    // Logout acknowledgment
+    socket.on('logout_acknowledged', (data) => {
+      console.log('✅ Logout acknowledged:', data);
+      setIsAuthenticated(false);
+      setIsConnected(false);
+    });
+
+    // Logout error handling
+    socket.on('logout_error', (error) => {
+      console.error('❌ Logout error:', error);
+    });
+
     // Error handling
     socket.on('connect_error', (error) => {
       console.error('❌ Socket.IO connection error:', error);
@@ -226,6 +238,17 @@ export function useSocket(callbacks: SocketCallbacks = {}) {
     }
   }, [isAuthenticated, user?.id]);
 
+  // Logout user from socket
+  const logoutUser = useCallback(() => {
+    if (!socketRef.current || !user?.id) {
+      console.warn('⚠️ Cannot logout: socket not available or user not found');
+      return;
+    }
+
+    console.log(`🚪 Logging out user: ${user.id}`);
+    socketRef.current.emit('user_logout', { userId: user.id });
+  }, [user?.id]);
+
   // Initialize socket when user is available
   useEffect(() => {
     if (user && !socketRef.current) {
@@ -253,7 +276,8 @@ export function useSocket(callbacks: SocketCallbacks = {}) {
     sendTypingStart,
     sendTypingStop,
     broadcastMessage,
-    broadcastProfileUpdate
+    broadcastProfileUpdate,
+    logoutUser
   };
 }
 

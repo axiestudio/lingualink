@@ -1,17 +1,42 @@
-import { clerkMiddleware } from '@clerk/nextjs/server'
-import { NextResponse } from 'next/server'
-import { addSecurityHeaders } from '@/lib/security-headers'
+import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { securityMiddleware } from './middleware/security'
 
-export default clerkMiddleware((auth, req) => {
-  // Get the response from Clerk middleware
-  const response = NextResponse.next()
+const isProtectedRoute = createRouteMatcher([
+  '/dashboard(.*)',
+  '/api/messages(.*)',
+  '/api/conversations(.*)',
+  '/api/users(.*)',
+  '/api/upload(.*)',
+  '/api/rooms(.*)',
+])
 
-  // 🔒 SECURITY: Only add security headers in production to avoid Clerk conflicts
-  if (process.env.NODE_ENV === 'production') {
-    return addSecurityHeaders(response)
+export default clerkMiddleware(async (auth, req: NextRequest) => {
+  // 🔒 APPLY SECURITY MIDDLEWARE FIRST
+  const securityResponse = securityMiddleware(req);
+
+  // If security middleware blocks the request, return immediately
+  if (securityResponse.status !== 200) {
+    return securityResponse;
   }
 
-  return response
+  // 🛡️ APPLY CLERK AUTHENTICATION FOR PROTECTED ROUTES
+  if (isProtectedRoute(req)) {
+    try {
+      const { userId } = await auth();
+      if (!userId) {
+        return NextResponse.redirect(new URL('/sign-in', req.url));
+      }
+    } catch (error) {
+      // If auth fails, redirect to sign-in
+      return NextResponse.redirect(new URL('/sign-in', req.url));
+    }
+  }
+
+  // Return the security-enhanced response with proper headers
+  return NextResponse.next({
+    headers: securityResponse.headers
+  });
 })
 
 export const config = {
