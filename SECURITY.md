@@ -1,6 +1,6 @@
 # 🔒 Security Implementation
 
-This document outlines the comprehensive security measures implemented in the Chatify application.
+This document outlines the comprehensive security measures implemented in the Lingua Link application.
 
 ## 🛡️ Security Features
 

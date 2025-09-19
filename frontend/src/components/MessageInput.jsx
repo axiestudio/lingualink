@@ -87,7 +87,7 @@ function MessageInput() {
             isSoundEnabled && playRandomKeyStrokeSound();
           }}
           className="flex-1 bg-slate-800/50 border border-slate-700/50 rounded-lg py-2 px-4 text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-          placeholder="Type your message..."
+          placeholder="Type in any language... (auto-translated)"
         />
 
         <input
