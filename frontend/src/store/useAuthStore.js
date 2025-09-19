@@ -113,6 +113,27 @@ export const useAuthStore = create((set, get) => ({
       const numericUserIds = userIds.map(id => parseInt(id));
       set({ onlineUsers: numericUserIds });
     });
+
+    // SECURITY: Listen for real-time profile updates
+    socket.on("profileUpdated", (profileData) => {
+      console.log("Received profile update:", profileData);
+
+      // Update the current user's profile if it's their own update
+      const currentUser = get().authUser;
+      if (currentUser && currentUser._id === profileData.userId) {
+        set({
+          authUser: {
+            ...currentUser,
+            profilePic: profileData.profilePic,
+            updatedAt: profileData.updatedAt
+          }
+        });
+        console.log("Updated current user profile");
+      }
+
+      // Notify other stores about profile update (for contacts/chats lists)
+      window.dispatchEvent(new CustomEvent('profileUpdated', { detail: profileData }));
+    });
   },
 
   disconnectSocket: () => {

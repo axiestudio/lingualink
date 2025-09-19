@@ -4,6 +4,7 @@ import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import { ENV } from "../lib/env.js";
 import { sanitizeInput, sanitizeEmail, validateImageData } from "../utils/security.utils.js";
+import { io, getAllUserSocketIds } from "../lib/socket.js";
 
 export const signup = async (req, res) => {
   const { fullName, email, password } = req.body;
@@ -100,7 +101,7 @@ export const updateProfile = async (req, res) => {
 
     const userId = req.user._id;
 
-    // Validate image data
+    // SECURITY: Validate image data
     const imageValidation = validateImageData(profilePic);
     if (!imageValidation.valid) {
       return res.status(400).json({ message: imageValidation.error });
@@ -112,6 +113,19 @@ export const updateProfile = async (req, res) => {
     if (!updatedUser) {
       return res.status(404).json({ message: "User not found" });
     }
+
+    // REAL-TIME PROFILE UPDATE: Broadcast profile update to all connected users
+    const profileUpdateData = {
+      userId: updatedUser._id,
+      fullName: updatedUser.fullName,
+      profilePic: updatedUser.profilePic,
+      updatedAt: updatedUser.updatedAt
+    };
+
+    // Broadcast to ALL connected users (so they see updated profile pics in contacts/chats)
+    io.emit("profileUpdated", profileUpdateData);
+
+    console.log(`Profile updated for user ${updatedUser.fullName} (${userId}) - broadcasted to all users`);
 
     res.status(200).json(updatedUser);
   } catch (error) {

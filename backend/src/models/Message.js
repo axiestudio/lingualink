@@ -36,6 +36,18 @@ class Message {
     }
   }
 
+  // Find message by ID (for security validation)
+  static async findById(messageId) {
+    const query = 'SELECT id, sender_id, receiver_id, text, image_name, image_type, created_at, updated_at FROM messages WHERE id = $1';
+
+    try {
+      const result = await pool.query(query, [messageId]);
+      return result.rows.length > 0 ? this.formatMessage(result.rows[0]) : null;
+    } catch (error) {
+      throw error;
+    }
+  }
+
   // Get image data for a message
   static async getImageData(messageId) {
     const query = 'SELECT image, image_name, image_type FROM messages WHERE id = $1';

@@ -3,6 +3,7 @@ import ChatPage from "./pages/ChatPage";
 import LoginPage from "./pages/LoginPage";
 import SignUpPage from "./pages/SignUpPage";
 import { useAuthStore } from "./store/useAuthStore";
+import { useChatStore } from "./store/useChatStore";
 import { useEffect } from "react";
 import PageLoader from "./components/PageLoader";
 
@@ -10,10 +11,13 @@ import { Toaster } from "react-hot-toast";
 
 function App() {
   const { checkAuth, isCheckingAuth, authUser } = useAuthStore();
+  const { initProfileUpdateListener } = useChatStore();
 
   useEffect(() => {
     checkAuth();
-  }, [checkAuth]);
+    // SECURITY: Initialize real-time profile update listener
+    initProfileUpdateListener();
+  }, [checkAuth, initProfileUpdateListener]);
 
   if (isCheckingAuth) return <PageLoader />;
 

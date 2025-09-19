@@ -13,6 +13,42 @@ export const useChatStore = create((set, get) => ({
   isMessagesLoading: false,
   isSoundEnabled: JSON.parse(localStorage.getItem("isSoundEnabled")) === true,
 
+  // SECURITY: Initialize profile update listener
+  initProfileUpdateListener: () => {
+    window.addEventListener('profileUpdated', (event) => {
+      const profileData = event.detail;
+      console.log("Chat store received profile update:", profileData);
+
+      // Update contacts list
+      const { allContacts, chats, selectedUser } = get();
+
+      const updatedContacts = allContacts.map(contact =>
+        contact._id === profileData.userId
+          ? { ...contact, profilePic: profileData.profilePic, updatedAt: profileData.updatedAt }
+          : contact
+      );
+
+      const updatedChats = chats.map(chat =>
+        chat._id === profileData.userId
+          ? { ...chat, profilePic: profileData.profilePic, updatedAt: profileData.updatedAt }
+          : chat
+      );
+
+      // Update selected user if it's the one that got updated
+      const updatedSelectedUser = selectedUser && selectedUser._id === profileData.userId
+        ? { ...selectedUser, profilePic: profileData.profilePic, updatedAt: profileData.updatedAt }
+        : selectedUser;
+
+      set({
+        allContacts: updatedContacts,
+        chats: updatedChats,
+        selectedUser: updatedSelectedUser
+      });
+
+      console.log("Updated contacts and chats with new profile data");
+    });
+  },
+
   toggleSound: () => {
     localStorage.setItem("isSoundEnabled", !get().isSoundEnabled);
     set({ isSoundEnabled: !get().isSoundEnabled });
