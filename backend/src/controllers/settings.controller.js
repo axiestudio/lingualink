@@ -181,9 +181,44 @@ export const getTranslationSettings = async (req, res) => {
     });
   } catch (error) {
     console.error("Error in getTranslationSettings:", error);
-    res.status(500).json({ 
-      success: false, 
-      error: "Internal server error" 
+    res.status(500).json({
+      success: false,
+      error: "Internal server error"
+    });
+  }
+};
+
+/**
+ * Get another user's public settings (for translation purposes)
+ */
+export const getUserPublicSettings = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Verify the user exists
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found"
+      });
+    }
+
+    // Get user's translation settings (only public info)
+    const settings = await UserSettings.getByUserId(userId);
+
+    res.status(200).json({
+      success: true,
+      settings: {
+        preferredLanguage: settings.preferredLanguage,
+        // Don't expose private settings like API keys or auto-translate preferences
+      }
+    });
+  } catch (error) {
+    console.error("Error in getUserPublicSettings:", error);
+    res.status(500).json({
+      success: false,
+      error: "Internal server error"
     });
   }
 };

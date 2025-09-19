@@ -12,13 +12,21 @@ import { Toaster } from "react-hot-toast";
 
 function App() {
   const { checkAuth, isCheckingAuth, authUser } = useAuthStore();
-  const { fetchSupportedLanguages } = useTranslationStore();
+  const { fetchSupportedLanguages, loadUserSettings, settingsLoaded } = useTranslationStore();
 
   useEffect(() => {
     checkAuth();
     // Initialize translation store
     fetchSupportedLanguages();
   }, [checkAuth, fetchSupportedLanguages]);
+
+  // Load user settings when authenticated
+  useEffect(() => {
+    if (authUser && !settingsLoaded) {
+      console.log("🔄 User authenticated, loading settings...");
+      loadUserSettings();
+    }
+  }, [authUser, settingsLoaded, loadUserSettings]);
 
   if (isCheckingAuth) return <PageLoader />;
 

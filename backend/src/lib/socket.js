@@ -34,6 +34,26 @@ io.on("connection", (socket) => {
   // io.emit() is used to send events to all connected clients
   io.emit("getOnlineUsers", Object.keys(userSocketMap));
 
+  // Listen for settings changes and broadcast to user's other devices
+  socket.on("settingsChanged", (data) => {
+    console.log(`🔄 Settings changed for user ${socket.user.fullName}:`, data);
+
+    // Find all sockets for this user (multiple devices/tabs)
+    const userSockets = Object.entries(userSocketMap)
+      .filter(([id, socketId]) => id === userId)
+      .map(([id, socketId]) => socketId);
+
+    // Broadcast to all user's devices except the one that made the change
+    userSockets.forEach(socketId => {
+      if (socketId !== socket.id) {
+        io.to(socketId).emit("settingsUpdated", {
+          [data.type]: data.value
+        });
+        console.log(`📡 Settings update sent to socket ${socketId}`);
+      }
+    });
+  });
+
   // with socket.on we listen for events from clients
   socket.on("disconnect", () => {
     console.log("A user disconnected", socket.user.fullName);

@@ -1,14 +1,32 @@
 import { pool } from "../lib/db.js";
 
 class Message {
-  // Create a new message
-  static async create({ senderId, receiverId, text, image, imageName, imageType }) {
+  // Create a new message with translation support
+  static async create({
+    senderId,
+    receiverId,
+    text,
+    originalText,
+    translatedFrom,
+    translatedTo,
+    isAutoTranslated = false,
+    image,
+    imageName,
+    imageType
+  }) {
     const query = `
-      INSERT INTO messages (sender_id, receiver_id, text, image, image_name, image_type)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING id, sender_id, receiver_id, text, image_name, image_type, created_at, updated_at
+      INSERT INTO messages (
+        sender_id, receiver_id, text, original_text, translated_from,
+        translated_to, is_auto_translated, image, image_name, image_type
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING id, sender_id, receiver_id, text, original_text, translated_from,
+                translated_to, is_auto_translated, image_name, image_type, created_at, updated_at
     `;
-    const values = [senderId, receiverId, text, image, imageName, imageType];
+    const values = [
+      senderId, receiverId, text, originalText, translatedFrom,
+      translatedTo, isAutoTranslated, image, imageName, imageType
+    ];
 
     try {
       const result = await pool.query(query, values);
@@ -18,10 +36,11 @@ class Message {
     }
   }
 
-  // Find messages between two users
+  // Find messages between two users with translation data
   static async findBetweenUsers(userId1, userId2) {
     const query = `
-      SELECT id, sender_id, receiver_id, text, image_name, image_type, created_at, updated_at
+      SELECT id, sender_id, receiver_id, text, original_text, translated_from,
+             translated_to, is_auto_translated, image_name, image_type, created_at, updated_at
       FROM messages
       WHERE (sender_id = $1 AND receiver_id = $2)
          OR (sender_id = $2 AND receiver_id = $1)
@@ -68,7 +87,7 @@ class Message {
     }
   }
 
-  // Format message object to match frontend expectations
+  // Format message object to match frontend expectations with translation data
   static formatMessage(message) {
     if (!message) return null;
 
@@ -81,6 +100,14 @@ class Message {
       createdAt: message.created_at,
       updatedAt: message.updated_at
     };
+
+    // Add translation metadata if available
+    if (message.original_text) {
+      formatted.originalText = message.original_text;
+      formatted.translatedFrom = message.translated_from;
+      formatted.translatedTo = message.translated_to;
+      formatted.isAutoTranslated = message.is_auto_translated;
+    }
 
     // Add image URL if image exists
     if (message.image_name) {

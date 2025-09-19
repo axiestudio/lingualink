@@ -77,10 +77,25 @@ export const sendMessage = async (req, res) => {
       console.log("Image processed successfully:", { imageType, imageName, bufferSize: imageBuffer.length });
     }
 
+    // Extract translation metadata from request
+    const { originalText, translatedFrom, translatedTo } = req.body;
+    const isAutoTranslated = !!(originalText && translatedFrom && translatedTo);
+
+    console.log("Translation metadata:", {
+      hasOriginalText: !!originalText,
+      translatedFrom,
+      translatedTo,
+      isAutoTranslated
+    });
+
     const newMessage = await Message.create({
       senderId,
       receiverId,
       text: sanitizedText,
+      originalText: originalText || null,
+      translatedFrom: translatedFrom || null,
+      translatedTo: translatedTo || null,
+      isAutoTranslated,
       image: imageBuffer,
       imageName,
       imageType,

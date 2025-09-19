@@ -210,10 +210,10 @@ const TranslationButton = ({ text, onTranslatedText, className = "" }) => {
               </button>
             </div>
 
-            {/* Provider info */}
+            {/* Translation info */}
             <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
-              <p>🪶 Featherless AI (Primary) → 🤖 OpenAI (Fallback)</p>
-              <p>Using smart provider selection for best results</p>
+              <p>🌍 Smart translation with automatic language detection</p>
+              <p>High-quality translations for 97+ languages</p>
             </div>
 
             {/* Preferred language */}

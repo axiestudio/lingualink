@@ -45,13 +45,17 @@ const createTables = async () => {
       )
     `);
 
-    // Messages table
+    // Messages table with translation support
     await pool.query(`
       CREATE TABLE IF NOT EXISTS messages (
         id SERIAL PRIMARY KEY,
         sender_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         receiver_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         text TEXT,
+        original_text TEXT,
+        translated_from VARCHAR(10),
+        translated_to VARCHAR(10),
+        is_auto_translated BOOLEAN DEFAULT false,
         image BYTEA,
         image_name VARCHAR(255),
         image_type VARCHAR(100),
@@ -75,7 +79,45 @@ const createTables = async () => {
     await UserSettings.createTable();
 
     console.log("Database tables created successfully");
+
+    // Run migrations for existing tables
+    await runMigrations();
   } catch (error) {
     console.log("Error creating tables:", error);
+  }
+};
+
+// Migration function to add translation columns to existing messages table
+const runMigrations = async () => {
+  try {
+    console.log("🔄 Running database migrations...");
+
+    // Check if translation columns exist
+    const checkColumns = await pool.query(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = 'messages'
+      AND column_name IN ('original_text', 'translated_from', 'translated_to', 'is_auto_translated')
+    `);
+
+    if (checkColumns.rows.length === 0) {
+      console.log("📝 Adding translation columns to messages table...");
+
+      // Add translation columns
+      await pool.query(`
+        ALTER TABLE messages
+        ADD COLUMN IF NOT EXISTS original_text TEXT,
+        ADD COLUMN IF NOT EXISTS translated_from VARCHAR(10),
+        ADD COLUMN IF NOT EXISTS translated_to VARCHAR(10),
+        ADD COLUMN IF NOT EXISTS is_auto_translated BOOLEAN DEFAULT false
+      `);
+
+      console.log("✅ Translation columns added successfully");
+    } else {
+      console.log("✅ Translation columns already exist");
+    }
+  } catch (error) {
+    console.error("❌ Error running migrations:", error);
+    // Don't throw error for migrations, just log it
   }
 };

@@ -2,8 +2,8 @@ import { useRef, useState } from "react";
 import useKeyboardSound from "../hooks/useKeyboardSound";
 import { useChatStore } from "../store/useChatStore";
 import toast from "react-hot-toast";
-import { ImageIcon, SendIcon, XIcon } from "lucide-react";
-import TranslationButton from "./TranslationButton";
+import { ImageIcon, SendIcon, XIcon, Zap } from "lucide-react";
+import { useTranslationStore } from "../store/useTranslationStore";
 
 function MessageInput() {
   const { playRandomKeyStrokeSound } = useKeyboardSound();
@@ -12,7 +12,8 @@ function MessageInput() {
 
   const fileInputRef = useRef(null);
 
-  const { sendMessage, isSoundEnabled } = useChatStore();
+  const { sendMessage, isSoundEnabled, selectedUser } = useChatStore();
+  const { autoTranslateEnabled } = useTranslationStore();
 
   const handleSendMessage = (e) => {
     e.preventDefault();
@@ -58,8 +59,12 @@ function MessageInput() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleTranslatedText = (translatedText) => {
-    setText(translatedText);
+  // Get dynamic placeholder based on auto-translate status
+  const getPlaceholder = () => {
+    if (autoTranslateEnabled && selectedUser) {
+      return `Type in any language... (auto-translates for ${selectedUser.fullName})`;
+    }
+    return "Type a message...";
   };
 
   return (
@@ -92,7 +97,7 @@ function MessageInput() {
             isSoundEnabled && playRandomKeyStrokeSound();
           }}
           className="flex-1 bg-slate-800/50 border border-slate-700/50 rounded-lg py-2 px-4 text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-          placeholder="Type in any language... (auto-translated)"
+          placeholder={getPlaceholder()}
         />
 
         <input
@@ -117,11 +122,22 @@ function MessageInput() {
           <ImageIcon className="w-5 h-5" />
         </button>
 
-        <TranslationButton
-          text={text}
-          onTranslatedText={handleTranslatedText}
-          className="bg-slate-800/50 rounded-lg"
-        />
+        {/* Auto-translate toggle button */}
+        <button
+          type="button"
+          onClick={() => {
+            const { setAutoTranslateEnabled } = useTranslationStore.getState();
+            setAutoTranslateEnabled(!autoTranslateEnabled);
+          }}
+          className={`px-3 py-2 rounded-lg transition-all ${
+            autoTranslateEnabled
+              ? 'bg-cyan-500 text-white hover:bg-cyan-600'
+              : 'bg-slate-800/50 text-slate-400 hover:text-slate-200'
+          }`}
+          title={autoTranslateEnabled ? 'Auto-translate enabled' : 'Auto-translate disabled'}
+        >
+          <Zap className="w-5 h-5" />
+        </button>
         <button
           type="submit"
           disabled={!text.trim() && !imagePreview}

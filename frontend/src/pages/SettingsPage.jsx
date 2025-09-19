@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuthStore } from "../store/useAuthStore";
 import { useTranslationStore } from "../store/useTranslationStore";
-import { User, Lock, Globe, Key, Save, TestTube, Eye, EyeOff } from "lucide-react";
+import { User, Lock, Globe, Key, Save, TestTube, Eye, EyeOff, Camera, Upload } from "lucide-react";
 import LanguageSelector from "../components/LanguageSelector";
 import toast from "react-hot-toast";
 
@@ -17,6 +17,8 @@ const SettingsPage = () => {
   // Profile state
   const [fullName, setFullName] = useState(authUser?.fullName || "");
   const [profilePic, setProfilePic] = useState(authUser?.profilePic || "");
+  const [profilePicPreview, setProfilePicPreview] = useState(authUser?.profilePic || "");
+  const fileInputRef = useRef(null);
 
   // Password state
   const [currentPassword, setCurrentPassword] = useState("");
@@ -24,9 +26,7 @@ const SettingsPage = () => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPasswords, setShowPasswords] = useState(false);
 
-  // Translation settings state
-  const [preferredLanguage, setPreferredLanguage] = useState(userPreferredLanguage || "en");
-  const [autoTranslate, setAutoTranslate] = useState(autoTranslateEnabled || false);
+  // Translation settings state - sync with store
   const [customApiKey, setCustomApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
   const [hasCustomApiKey, setHasCustomApiKey] = useState(false);
@@ -46,7 +46,7 @@ const SettingsPage = () => {
       const response = await fetch("/api/settings/profile", {
         credentials: "include"
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         setHasCustomApiKey(data.settings.hasCustomApiKey);
@@ -54,6 +54,24 @@ const SettingsPage = () => {
     } catch (error) {
       console.error("Error fetching settings:", error);
     }
+  };
+
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      toast.error("Image size should be less than 5MB");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64String = reader.result;
+      setProfilePic(base64String);
+      setProfilePicPreview(base64String);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleUpdateProfile = async (e) => {
@@ -138,8 +156,8 @@ const SettingsPage = () => {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          preferredLanguage,
-          autoTranslateEnabled: autoTranslate,
+          preferredLanguage: userPreferredLanguage,
+          autoTranslateEnabled: autoTranslateEnabled,
           openaiApiKey: customApiKey || null
         })
       });
@@ -147,8 +165,7 @@ const SettingsPage = () => {
       const data = await response.json();
       if (data.success) {
         toast.success("Translation settings updated!");
-        setUserPreferredLanguage(preferredLanguage);
-        setAutoTranslateEnabled(autoTranslate);
+        // Settings are now updated via the store's database-driven setters
         setHasCustomApiKey(!!customApiKey);
       } else {
         toast.error(data.error || "Failed to update settings");
@@ -189,49 +206,101 @@ const SettingsPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
+    <div className="min-h-screen bg-slate-900 py-8">
       <div className="max-w-4xl mx-auto px-4">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-8">Settings</h1>
+        <h1 className="text-3xl font-bold text-slate-100 mb-8 flex items-center">
+          <User className="w-8 h-8 text-cyan-400 mr-3" />
+          Settings
+        </h1>
 
         <div className="space-y-8">
           {/* Profile Settings */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-6">
             <div className="flex items-center mb-6">
-              <User className="w-6 h-6 text-blue-600 mr-3" />
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Profile Settings</h2>
+              <User className="w-6 h-6 text-cyan-400 mr-3" />
+              <h2 className="text-xl font-semibold text-slate-100">Profile Settings</h2>
             </div>
 
-            <form onSubmit={handleUpdateProfile} className="space-y-4">
+            <form onSubmit={handleUpdateProfile} className="space-y-6">
+              {/* Profile Picture */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-slate-300 mb-3">
+                  Profile Picture
+                </label>
+                <div className="flex items-center space-x-4">
+                  <div className="relative">
+                    <div className="w-20 h-20 rounded-full overflow-hidden bg-slate-700 border-2 border-slate-600">
+                      {profilePicPreview ? (
+                        <img
+                          src={profilePicPreview}
+                          alt="Profile"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <User className="w-8 h-8 text-slate-400" />
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="absolute -bottom-1 -right-1 w-6 h-6 bg-cyan-500 hover:bg-cyan-600 rounded-full flex items-center justify-center transition-colors"
+                    >
+                      <Camera className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                  <div className="flex-1">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg transition-colors text-sm"
+                    >
+                      <Upload className="w-4 h-4 mr-2" />
+                      Upload New Picture
+                    </button>
+                    <p className="text-xs text-slate-400 mt-1">JPG, PNG up to 5MB</p>
+                  </div>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageChange}
+                  className="hidden"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
                   Full Name
                 </label>
                 <input
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
+                  className="w-full px-3 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-cyan-500 bg-slate-700/50 text-slate-100 placeholder-slate-400"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-slate-300 mb-2">
                   Email
                 </label>
                 <input
                   type="email"
                   value={authUser?.email || ""}
                   disabled
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-600 text-gray-500 dark:text-gray-400"
+                  className="w-full px-3 py-2 border border-slate-600 rounded-lg bg-slate-700/30 text-slate-400"
                 />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Email cannot be changed</p>
+                <p className="text-xs text-slate-400 mt-1">Email cannot be changed</p>
               </div>
 
               <button
                 type="submit"
                 disabled={isUpdatingProfile}
-                className="flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg transition-colors"
+                className="flex items-center px-4 py-2 bg-cyan-500 hover:bg-cyan-600 disabled:bg-cyan-400 text-white rounded-lg transition-colors"
               >
                 <Save className="w-4 h-4 mr-2" />
                 {isUpdatingProfile ? "Updating..." : "Update Profile"}
@@ -240,15 +309,15 @@ const SettingsPage = () => {
           </div>
 
           {/* Password Settings */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-6">
             <div className="flex items-center mb-6">
-              <Lock className="w-6 h-6 text-red-600 mr-3" />
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Change Password</h2>
+              <Lock className="w-6 h-6 text-pink-400 mr-3" />
+              <h2 className="text-xl font-semibold text-slate-100">Change Password</h2>
             </div>
 
             <form onSubmit={handleUpdatePassword} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-slate-300 mb-2">
                   Current Password
                 </label>
                 <div className="relative">
@@ -256,13 +325,13 @@ const SettingsPage = () => {
                     type={showPasswords ? "text" : "password"}
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
+                    className="w-full px-3 py-2 pr-10 border border-slate-600 rounded-lg focus:ring-2 focus:ring-cyan-500 bg-slate-700/50 text-slate-100 placeholder-slate-400"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPasswords(!showPasswords)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-300"
                   >
                     {showPasswords ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -270,27 +339,27 @@ const SettingsPage = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-slate-300 mb-2">
                   New Password
                 </label>
                 <input
                   type={showPasswords ? "text" : "password"}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
+                  className="w-full px-3 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-cyan-500 bg-slate-700/50 text-slate-100 placeholder-slate-400"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-slate-300 mb-2">
                   Confirm New Password
                 </label>
                 <input
                   type={showPasswords ? "text" : "password"}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
+                  className="w-full px-3 py-2 border border-slate-600 rounded-lg focus:ring-2 focus:ring-cyan-500 bg-slate-700/50 text-slate-100 placeholder-slate-400"
                   required
                 />
               </div>
@@ -298,7 +367,7 @@ const SettingsPage = () => {
               <button
                 type="submit"
                 disabled={isUpdatingPassword}
-                className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-lg transition-colors"
+                className="flex items-center px-4 py-2 bg-pink-500 hover:bg-pink-600 disabled:bg-pink-400 text-white rounded-lg transition-colors"
               >
                 <Lock className="w-4 h-4 mr-2" />
                 {isUpdatingPassword ? "Updating..." : "Update Password"}
@@ -307,61 +376,62 @@ const SettingsPage = () => {
           </div>
 
           {/* Translation Settings */}
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-lg p-6">
             <div className="flex items-center mb-6">
-              <Globe className="w-6 h-6 text-green-600 mr-3" />
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Translation Settings</h2>
+              <Globe className="w-6 h-6 text-cyan-400 mr-3" />
+              <h2 className="text-xl font-semibold text-slate-100">Translation Settings</h2>
             </div>
 
             <form onSubmit={handleUpdateTranslationSettings} className="space-y-6">
               {/* Preferred Language */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-slate-300 mb-2">
                   Preferred Language
                 </label>
                 <LanguageSelector
-                  selectedLanguage={preferredLanguage}
-                  onLanguageChange={setPreferredLanguage}
+                  selectedLanguage={userPreferredLanguage}
+                  onLanguageChange={setUserPreferredLanguage}
                   label="Select your preferred language for auto-translation"
                 />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <p className="text-xs text-slate-400 mt-1">
                   Messages will be auto-translated to this language when you use the ⚡ button
                 </p>
               </div>
 
               {/* Auto-translate Toggle */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between p-4 bg-slate-700/30 rounded-lg border border-slate-600/30">
                 <div>
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <label className="text-sm font-medium text-slate-200">
                     Auto-translate incoming messages
                   </label>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                  <p className="text-xs text-slate-400">
                     Automatically translate received messages to your preferred language
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setAutoTranslate(!autoTranslate)}
+                  onClick={() => setAutoTranslateEnabled(!autoTranslateEnabled)}
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                    autoTranslate ? 'bg-green-600' : 'bg-gray-300 dark:bg-gray-600'
+                    autoTranslateEnabled ? 'bg-cyan-500' : 'bg-slate-600'
                   }`}
                 >
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      autoTranslate ? 'translate-x-6' : 'translate-x-1'
+                      autoTranslateEnabled ? 'translate-x-6' : 'translate-x-1'
                     }`}
                   />
                 </button>
               </div>
 
               {/* Custom OpenAI API Key */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <div className="p-4 bg-slate-700/30 rounded-lg border border-slate-600/30">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-sm font-medium text-slate-200 flex items-center">
+                    <Key className="w-4 h-4 mr-2 text-cyan-400" />
                     Custom OpenAI API Key (Optional)
                   </label>
                   {hasCustomApiKey && (
-                    <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                    <span className="text-xs bg-cyan-500/20 text-cyan-300 px-2 py-1 rounded-full border border-cyan-500/30">
                       ✅ Custom key active
                     </span>
                   )}
@@ -374,13 +444,13 @@ const SettingsPage = () => {
                       value={customApiKey}
                       onChange={(e) => setCustomApiKey(e.target.value)}
                       placeholder="sk-proj-..."
-                      className="w-full px-3 py-2 pr-20 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100"
+                      className="w-full px-3 py-2 pr-20 border border-slate-600 rounded-lg focus:ring-2 focus:ring-cyan-500 bg-slate-800/50 text-slate-100 placeholder-slate-400"
                     />
                     <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex gap-1">
                       <button
                         type="button"
                         onClick={() => setShowApiKey(!showApiKey)}
-                        className="text-gray-400 hover:text-gray-600 p-1"
+                        className="text-slate-400 hover:text-slate-300 p-1"
                       >
                         {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
@@ -388,7 +458,7 @@ const SettingsPage = () => {
                         type="button"
                         onClick={handleTestApiKey}
                         disabled={!customApiKey.trim() || isTestingApiKey}
-                        className="text-blue-500 hover:text-blue-600 disabled:text-gray-400 p-1"
+                        className="text-cyan-400 hover:text-cyan-300 disabled:text-slate-500 p-1"
                         title="Test API key"
                       >
                         <TestTube className="w-4 h-4" />
@@ -396,10 +466,10 @@ const SettingsPage = () => {
                     </div>
                   </div>
 
-                  <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-                    <p>• If provided, your API key will be used instead of our shared keys</p>
-                    <p>• This gives you higher rate limits and priority access</p>
-                    <p>• Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">OpenAI Platform</a></p>
+                  <div className="text-xs text-slate-400 space-y-1 bg-slate-800/30 p-3 rounded border border-slate-600/20">
+                    <p>• If provided, your API key will be used with <strong>highest priority</strong></p>
+                    <p>• This gives you unlimited rate limits and fastest response times</p>
+                    <p>• Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300 underline">OpenAI Platform</a></p>
                     <p>• Leave empty to use our shared translation service</p>
                   </div>
                 </div>
@@ -408,7 +478,7 @@ const SettingsPage = () => {
               <button
                 type="submit"
                 disabled={isUpdatingTranslation}
-                className="flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg transition-colors"
+                className="flex items-center px-4 py-2 bg-cyan-500 hover:bg-cyan-600 disabled:bg-cyan-400 text-white rounded-lg transition-colors"
               >
                 <Globe className="w-4 h-4 mr-2" />
                 {isUpdatingTranslation ? "Updating..." : "Update Translation Settings"}
