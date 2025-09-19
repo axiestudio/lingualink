@@ -17,75 +17,28 @@ const io = new Server(server, {
 // apply authentication middleware to all socket connections
 io.use(socketAuthMiddleware);
 
-// SECURE function to get receiver socket IDs with proper validation
+// we will use this function to check if the user is online or not
 export function getReceiverSocketId(userId) {
-  if (!userId || !userSocketMap.has(userId)) {
-    return null;
-  }
-
-  const socketIds = userSocketMap.get(userId);
-  if (!socketIds || socketIds.size === 0) {
-    return null;
-  }
-
-  // Return the first active socket ID (for primary connection)
-  return Array.from(socketIds)[0];
+  return userSocketMap[userId];
 }
 
-// SECURE function to get ALL socket IDs for a user (for multi-device support)
-export function getAllUserSocketIds(userId) {
-  if (!userId || !userSocketMap.has(userId)) {
-    return [];
-  }
-
-  const socketIds = userSocketMap.get(userId);
-  return socketIds ? Array.from(socketIds) : [];
-}
-
-// SECURITY: Function to check if user is online
-export function isUserOnline(userId) {
-  return userSocketMap.has(userId) && userSocketMap.get(userId).size > 0;
-}
-
-// SECURE user socket mapping with proper isolation
-const userSocketMap = new Map(); // {userId: Set<socketId>} - Support multiple connections per user
+// this is for storig online users
+const userSocketMap = {}; // {userId:socketId}
 
 io.on("connection", (socket) => {
   console.log("A user connected", socket.user.fullName);
 
   const userId = socket.user._id;
+  userSocketMap[userId] = socket.id;
 
-  // SECURITY: Ensure proper user isolation
-  if (!userSocketMap.has(userId)) {
-    userSocketMap.set(userId, new Set());
-  }
-  userSocketMap.get(userId).add(socket.id);
+  // io.emit() is used to send events to all connected clients
+  io.emit("getOnlineUsers", Object.keys(userSocketMap));
 
-  // SECURITY: Only send sanitized user IDs (no sensitive data)
-  const onlineUserIds = Array.from(userSocketMap.keys()).map(id => parseInt(id));
-  io.emit("getOnlineUsers", onlineUserIds);
-
-  console.log(`User ${socket.user.fullName} (${userId}) connected with socket ${socket.id}`);
-  console.log(`Total connections for user ${userId}:`, userSocketMap.get(userId).size);
-
-  // SECURITY: Handle disconnect with proper cleanup
+  // with socket.on we listen for events from clients
   socket.on("disconnect", () => {
     console.log("A user disconnected", socket.user.fullName);
-
-    if (userSocketMap.has(userId)) {
-      userSocketMap.get(userId).delete(socket.id);
-
-      // Remove user from map if no more connections
-      if (userSocketMap.get(userId).size === 0) {
-        userSocketMap.delete(userId);
-      }
-    }
-
-    // Update online users list
-    const updatedOnlineUserIds = Array.from(userSocketMap.keys()).map(id => parseInt(id));
-    io.emit("getOnlineUsers", updatedOnlineUserIds);
-
-    console.log(`User ${socket.user.fullName} (${userId}) disconnected from socket ${socket.id}`);
+    delete userSocketMap[userId];
+    io.emit("getOnlineUsers", Object.keys(userSocketMap));
   });
 });
 

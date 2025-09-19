@@ -1,6 +1,7 @@
 import pkg from 'pg';
 const { Pool } = pkg;
 import { ENV } from "./env.js";
+import UserSettings from "../models/UserSettings.js";
 
 // Create PostgreSQL connection pool
 export const pool = new Pool({
@@ -69,6 +70,9 @@ const createTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_messages_created_at
       ON messages(created_at)
     `);
+
+    // Create user settings table
+    await UserSettings.createTable();
 
     console.log("Database tables created successfully");
   } catch (error) {

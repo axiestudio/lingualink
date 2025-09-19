@@ -5,6 +5,7 @@ import ChatHeader from "./ChatHeader";
 import NoChatHistoryPlaceholder from "./NoChatHistoryPlaceholder";
 import MessageInput from "./MessageInput";
 import MessagesLoadingSkeleton from "./MessagesLoadingSkeleton";
+import MessageTranslation from "./MessageTranslation";
 
 function ChatContainer() {
   const {
@@ -60,6 +61,10 @@ function ChatContainer() {
                       minute: "2-digit",
                     }) : "Now"}
                   </p>
+                  {/* Translation component for received messages */}
+                  {msg.senderId !== authUser._id && msg.text && (
+                    <MessageTranslation message={msg} />
+                  )}
                 </div>
               </div>
             ))}

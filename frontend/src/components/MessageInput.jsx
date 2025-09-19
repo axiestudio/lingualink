@@ -3,6 +3,7 @@ import useKeyboardSound from "../hooks/useKeyboardSound";
 import { useChatStore } from "../store/useChatStore";
 import toast from "react-hot-toast";
 import { ImageIcon, SendIcon, XIcon } from "lucide-react";
+import TranslationButton from "./TranslationButton";
 
 function MessageInput() {
   const { playRandomKeyStrokeSound } = useKeyboardSound();
@@ -55,6 +56,10 @@ function MessageInput() {
   const removeImage = () => {
     setImagePreview(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleTranslatedText = (translatedText) => {
+    setText(translatedText);
   };
 
   return (
@@ -111,6 +116,12 @@ function MessageInput() {
         >
           <ImageIcon className="w-5 h-5" />
         </button>
+
+        <TranslationButton
+          text={text}
+          onTranslatedText={handleTranslatedText}
+          className="bg-slate-800/50 rounded-lg"
+        />
         <button
           type="submit"
           disabled={!text.trim() && !imagePreview}
