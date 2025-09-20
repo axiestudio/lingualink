@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuthStore } from "../store/useAuthStore";
 import { useTranslationStore } from "../store/useTranslationStore";
-import { User, Lock, Globe, Key, Save, TestTube, Eye, EyeOff, Camera, Upload } from "lucide-react";
+import { axiosInstance } from "../lib/axios";
+import { User, Lock, Globe, Key, Save, TestTube, Eye, EyeOff, Camera, Upload, Wifi } from "lucide-react";
 import LanguageSelector from "../components/LanguageSelector";
+import keepAliveService from "../services/keepAliveService";
 import toast from "react-hot-toast";
 
 const SettingsPage = () => {
-  const { authUser, updateProfile } = useAuthStore();
+  const { authUser } = useAuthStore();
   const { 
     userPreferredLanguage, 
     autoTranslateEnabled,
@@ -43,13 +45,9 @@ const SettingsPage = () => {
 
   const fetchUserSettings = async () => {
     try {
-      const response = await fetch("/api/settings/profile", {
-        credentials: "include"
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setHasCustomApiKey(data.settings.hasCustomApiKey);
+      const response = await axiosInstance.get("/settings/profile");
+      if (response.data.success) {
+        setHasCustomApiKey(response.data.settings.hasCustomApiKey);
       }
     } catch (error) {
       console.error("Error fetching settings:", error);
@@ -83,22 +81,26 @@ const SettingsPage = () => {
 
     setIsUpdatingProfile(true);
     try {
-      const response = await fetch("/api/settings/profile", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ fullName: fullName.trim(), profilePic })
+      const response = await axiosInstance.put("/settings/profile", {
+        fullName: fullName.trim(),
+        profilePic
       });
 
-      const data = await response.json();
-      if (data.success) {
+      if (response.data.success) {
         toast.success("Profile updated successfully!");
-        updateProfile(data.profile);
+        // Update the auth user in the store directly
+        const { useAuthStore } = await import("../store/useAuthStore");
+        useAuthStore.setState({
+          authUser: {
+            ...useAuthStore.getState().authUser,
+            ...response.data.profile
+          }
+        });
       } else {
-        toast.error(data.error || "Failed to update profile");
+        toast.error(response.data.error || "Failed to update profile");
       }
     } catch (error) {
-      toast.error("Failed to update profile");
+      toast.error(error.response?.data?.error || "Failed to update profile");
     } finally {
       setIsUpdatingProfile(false);
     }
@@ -123,24 +125,21 @@ const SettingsPage = () => {
 
     setIsUpdatingPassword(true);
     try {
-      const response = await fetch("/api/settings/password", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ currentPassword, newPassword })
+      const response = await axiosInstance.put("/settings/password", {
+        currentPassword,
+        newPassword
       });
 
-      const data = await response.json();
-      if (data.success) {
+      if (response.data.success) {
         toast.success("Password updated successfully!");
         setCurrentPassword("");
         setNewPassword("");
         setConfirmPassword("");
       } else {
-        toast.error(data.error || "Failed to update password");
+        toast.error(response.data.error || "Failed to update password");
       }
     } catch (error) {
-      toast.error("Failed to update password");
+      toast.error(error.response?.data?.error || "Failed to update password");
     } finally {
       setIsUpdatingPassword(false);
     }
@@ -151,27 +150,21 @@ const SettingsPage = () => {
     setIsUpdatingTranslation(true);
     
     try {
-      const response = await fetch("/api/settings/translation", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          preferredLanguage: userPreferredLanguage,
-          autoTranslateEnabled: autoTranslateEnabled,
-          openaiApiKey: customApiKey || null
-        })
+      const response = await axiosInstance.put("/settings/translation", {
+        preferredLanguage: userPreferredLanguage,
+        autoTranslateEnabled: autoTranslateEnabled,
+        openaiApiKey: customApiKey || null
       });
 
-      const data = await response.json();
-      if (data.success) {
+      if (response.data.success) {
         toast.success("Translation settings updated!");
         // Settings are now updated via the store's database-driven setters
         setHasCustomApiKey(!!customApiKey);
       } else {
-        toast.error(data.error || "Failed to update settings");
+        toast.error(response.data.error || "Failed to update settings");
       }
     } catch (error) {
-      toast.error("Failed to update translation settings");
+      toast.error(error.response?.data?.error || "Failed to update translation settings");
     } finally {
       setIsUpdatingTranslation(false);
     }
@@ -185,21 +178,17 @@ const SettingsPage = () => {
 
     setIsTestingApiKey(true);
     try {
-      const response = await fetch("/api/settings/test-api-key", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ apiKey: customApiKey })
+      const response = await axiosInstance.post("/settings/test-api-key", {
+        apiKey: customApiKey
       });
 
-      const data = await response.json();
-      if (data.success) {
+      if (response.data.success) {
         toast.success("✅ API key is valid and working!");
       } else {
-        toast.error(`❌ ${data.error}`);
+        toast.error(`❌ ${response.data.error}`);
       }
     } catch (error) {
-      toast.error("Failed to test API key");
+      toast.error(error.response?.data?.error || "Failed to test API key");
     } finally {
       setIsTestingApiKey(false);
     }
@@ -484,6 +473,42 @@ const SettingsPage = () => {
                 {isUpdatingTranslation ? "Updating..." : "Update Translation Settings"}
               </button>
             </form>
+          </div>
+
+          {/* Keep-Alive Service Test (Development/Testing) */}
+          <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-600/20 rounded-xl p-6">
+            <div className="flex items-center mb-4">
+              <Wifi className="w-5 h-5 text-green-400 mr-3" />
+              <h2 className="text-xl font-semibold text-white">Keep-Alive Service</h2>
+            </div>
+
+            <div className="space-y-4">
+              <div className="text-sm text-slate-300">
+                <p>This service prevents the backend from sleeping on Render's free tier by sending a ping every 10 minutes.</p>
+                <p className="text-green-400 mt-2">✅ Service is automatically running in the background</p>
+              </div>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  toast.loading("Testing backend connection...", { id: "ping-test" });
+                  try {
+                    const success = await keepAliveService.triggerPing();
+                    if (success) {
+                      toast.success("Backend is alive and responding! 🎉", { id: "ping-test" });
+                    } else {
+                      toast.error("Backend ping failed. Check console for details.", { id: "ping-test" });
+                    }
+                  } catch (error) {
+                    toast.error("Ping test failed: " + error.message, { id: "ping-test" });
+                  }
+                }}
+                className="flex items-center px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors"
+              >
+                <Wifi className="w-4 h-4 mr-2" />
+                Test Backend Connection
+              </button>
+            </div>
           </div>
         </div>
       </div>

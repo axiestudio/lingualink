@@ -7,6 +7,7 @@ import { useAuthStore } from "./store/useAuthStore";
 import { useTranslationStore } from "./store/useTranslationStore";
 import { useEffect } from "react";
 import PageLoader from "./components/PageLoader";
+import keepAliveService from "./services/keepAliveService";
 
 import { Toaster } from "react-hot-toast";
 
@@ -18,6 +19,15 @@ function App() {
     checkAuth();
     // Initialize translation store
     fetchSupportedLanguages();
+
+    // Start keep-alive service for Render free tier
+    console.log("🚀 Starting keep-alive service to prevent backend sleeping");
+    keepAliveService.start();
+
+    // Cleanup on unmount
+    return () => {
+      keepAliveService.stop();
+    };
   }, [checkAuth, fetchSupportedLanguages]);
 
   // Load user settings when authenticated

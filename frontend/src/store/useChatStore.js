@@ -12,11 +12,40 @@ export const useChatStore = create((set, get) => ({
   selectedUser: null,
   isUsersLoading: false,
   isMessagesLoading: false,
-  isSoundEnabled: JSON.parse(localStorage.getItem("isSoundEnabled")) === true,
+  isSoundEnabled: true, // Will be loaded from database via translation store
+  soundSettingsLoaded: false, // Track if sound settings have been synced
 
-  toggleSound: () => {
-    localStorage.setItem("isSoundEnabled", !get().isSoundEnabled);
-    set({ isSoundEnabled: !get().isSoundEnabled });
+  // Database-driven sound toggle
+  toggleSound: async () => {
+    try {
+      const { useTranslationStore } = await import("./useTranslationStore");
+      const { setSoundEnabled } = useTranslationStore.getState();
+      const newSoundState = !get().isSoundEnabled;
+
+      // Optimistically update UI
+      set({ isSoundEnabled: newSoundState });
+
+      // Update in database
+      await setSoundEnabled(newSoundState);
+    } catch (error) {
+      console.error("❌ Error toggling sound:", error);
+      // Revert optimistic update on error
+      set({ isSoundEnabled: !get().isSoundEnabled });
+    }
+  },
+
+  // Sync sound settings from translation store
+  syncSoundSettings: () => {
+    try {
+      const { soundEnabled } = useTranslationStore.getState();
+      set({
+        isSoundEnabled: soundEnabled,
+        soundSettingsLoaded: true
+      });
+      console.log("🔊 Sound settings synced from translation store:", soundEnabled);
+    } catch (error) {
+      console.error("❌ Error syncing sound settings:", error);
+    }
   },
 
   setActiveTab: (tab) => set({ activeTab: tab }),

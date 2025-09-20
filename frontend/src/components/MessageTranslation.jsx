@@ -7,14 +7,21 @@ const MessageTranslation = ({ message, className = "" }) => {
   const [translatedText, setTranslatedText] = useState(null);
   const [isTranslating, setIsTranslating] = useState(false);
 
-  const { translateText, userPreferredLanguage, getLanguageName, autoTranslateEnabled } = useTranslationStore();
+  const { translateText, translateMessageById, userPreferredLanguage, getLanguageName, autoTranslateEnabled } = useTranslationStore();
 
   const handleTranslate = async () => {
     if (!message.text || isTranslating) return;
 
     setIsTranslating(true);
     try {
-      const result = await translateText(message.text, userPreferredLanguage);
+      // Use database-driven translation if message has an ID, otherwise use direct translation
+      let result;
+      if (message.id || message._id) {
+        result = await translateMessageById(message.id || message._id, userPreferredLanguage);
+      } else {
+        result = await translateText(message.text, userPreferredLanguage);
+      }
+
       if (result && result.translatedText) {
         setTranslatedText(result);
         setIsExpanded(true);

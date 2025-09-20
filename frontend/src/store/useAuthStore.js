@@ -3,7 +3,7 @@ import { axiosInstance } from "../lib/axios";
 import toast from "react-hot-toast";
 import { io } from "socket.io-client";
 
-const BASE_URL = import.meta.env.MODE === "development" ? "http://localhost:3000" : "/";
+const BASE_URL = import.meta.env.MODE === "development" ? "http://localhost:3002" : "/";
 
 export const useAuthStore = create((set, get) => ({
   authUser: null,
@@ -113,6 +113,21 @@ export const useAuthStore = create((set, get) => ({
       // Convert string IDs to numbers for consistent comparison
       const numericUserIds = userIds.map(id => parseInt(id));
       set({ onlineUsers: numericUserIds });
+    });
+
+    // Listen for real-time profile updates
+    socket.on("profileUpdated", (profileData) => {
+      console.log("🔄 Profile updated from server:", profileData);
+      const currentUser = get().authUser;
+      if (currentUser) {
+        set({
+          authUser: {
+            ...currentUser,
+            ...profileData
+          }
+        });
+        console.log("✅ Profile updated in real-time");
+      }
     });
   },
 
