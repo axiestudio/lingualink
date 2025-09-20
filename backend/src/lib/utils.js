@@ -22,7 +22,9 @@ export const generateToken = (userId, res) => {
       httpOnly: true, // prevent XSS attacks
       sameSite: "none", // Allow cross-site requests for development
       secure: true, // Required when sameSite=none
+      domain: undefined, // Don't set domain for cross-origin development
     };
+    console.log("🍪 Setting development cookie with sameSite=none, secure=true");
   } else {
     // Production mode: Strict security settings
     cookieSettings = {
@@ -30,10 +32,14 @@ export const generateToken = (userId, res) => {
       httpOnly: true, // prevent XSS attacks
       sameSite: "strict", // CSRF protection
       secure: ENV.NODE_ENV === "production", // HTTPS only in production
+      domain: undefined, // Let browser handle domain
     };
+    console.log("🍪 Setting production cookie with sameSite=strict");
   }
 
   res.cookie("jwt", token, cookieSettings);
+  console.log("🍪 JWT token generated and cookie set for user:", userId);
+  console.log("🍪 Cookie settings:", cookieSettings);
 
   return token;
 };
