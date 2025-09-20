@@ -19,6 +19,11 @@ const __dirname = path.resolve();
 
 const PORT = ENV.PORT || 3000;
 
+// Trust proxy for Render deployment
+if (ENV.NODE_ENV === "production") {
+  app.set('trust proxy', true);
+}
+
 // Security middleware
 app.use(helmet(helmetConfig));
 
@@ -46,11 +51,32 @@ app.use("/api/ping", pingRoutes);
 
 // make ready for deployment
 if (ENV.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname, "../frontend/dist")));
+  const frontendDistPath = path.join(__dirname, "../frontend/dist");
 
-  app.get("*", (_, res) => {
-    res.sendFile(path.join(__dirname, "../frontend", "dist", "index.html"));
-  });
+  // Check if frontend dist exists before serving
+  try {
+    app.use(express.static(frontendDistPath));
+
+    app.get("*", (req, res) => {
+      // Only serve index.html for non-API routes
+      if (!req.path.startsWith('/api')) {
+        const indexPath = path.join(frontendDistPath, "index.html");
+        res.sendFile(indexPath, (err) => {
+          if (err) {
+            console.log("Frontend files not found, serving API-only mode");
+            res.status(404).json({
+              message: "Frontend not available - API-only mode",
+              api: "Backend API is running successfully"
+            });
+          }
+        });
+      } else {
+        res.status(404).json({ error: "API endpoint not found" });
+      }
+    });
+  } catch (error) {
+    console.log("Frontend dist directory not found, running in API-only mode");
+  }
 }
 
 server.listen(PORT, () => {
