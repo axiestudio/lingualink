@@ -2,6 +2,7 @@ import UserSettings from "../models/UserSettings.js";
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import { SUPPORTED_LANGUAGES } from "../services/translation.service.js";
+import { getReceiverSocketId, io } from "../lib/socket.js";
 
 /**
  * Get user profile and settings
@@ -66,19 +67,29 @@ export const updateUserProfile = async (req, res) => {
     }
 
     // Update user
-    const updatedUser = await User.findByIdAndUpdate(
-      userId,
-      { 
-        fullName: fullName.trim(),
-        ...(profilePic && { profilePic })
-      },
-      { new: true }
-    );
+    const updateData = {
+      full_name: fullName.trim()
+    };
+    if (profilePic) {
+      updateData.profile_pic = profilePic;
+    }
+
+    const updatedUser = await User.updateProfile(userId, updateData);
 
     if (!updatedUser) {
       return res.status(404).json({
         success: false,
         error: "User not found"
+      });
+    }
+
+    // Emit real-time update to user's other devices/sessions
+    const userSocketId = getReceiverSocketId(userId);
+    if (userSocketId) {
+      io.to(userSocketId).emit("profileUpdated", {
+        fullName: updatedUser.fullName,
+        profilePic: updatedUser.profilePic,
+        updatedAt: updatedUser.updatedAt
       });
     }
 
@@ -147,7 +158,7 @@ export const updatePassword = async (req, res) => {
     const hashedNewPassword = await bcrypt.hash(newPassword, 12);
 
     // Update password
-    await User.findByIdAndUpdate(userId, { password: hashedNewPassword });
+    await User.updatePassword(userId, hashedNewPassword);
 
     res.status(200).json({
       success: true,
@@ -229,7 +240,7 @@ export const getUserPublicSettings = async (req, res) => {
 export const updateTranslationSettings = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { preferredLanguage, autoTranslateEnabled, openaiApiKey } = req.body;
+    const { preferredLanguage, autoTranslateEnabled, soundEnabled, openaiApiKey } = req.body;
 
     // Validation
     if (preferredLanguage && !SUPPORTED_LANGUAGES[preferredLanguage]) {
@@ -243,10 +254,23 @@ export const updateTranslationSettings = async (req, res) => {
     const settingsUpdate = {};
     if (preferredLanguage !== undefined) settingsUpdate.preferredLanguage = preferredLanguage;
     if (autoTranslateEnabled !== undefined) settingsUpdate.autoTranslateEnabled = autoTranslateEnabled;
+    if (soundEnabled !== undefined) settingsUpdate.soundEnabled = soundEnabled;
     if (openaiApiKey !== undefined) settingsUpdate.openaiApiKey = openaiApiKey || null;
 
     // Update settings
     const updatedSettings = await UserSettings.upsert(userId, settingsUpdate);
+
+    // Emit real-time update to user's other devices/sessions
+    const userSocketId = getReceiverSocketId(userId);
+    if (userSocketId) {
+      io.to(userSocketId).emit("settingsUpdated", {
+        preferredLanguage: updatedSettings.preferredLanguage,
+        autoTranslateEnabled: updatedSettings.autoTranslateEnabled,
+        soundEnabled: updatedSettings.soundEnabled,
+        hasCustomApiKey: !!updatedSettings.openaiApiKey,
+        updatedAt: updatedSettings.updatedAt
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -254,6 +278,7 @@ export const updateTranslationSettings = async (req, res) => {
       settings: {
         preferredLanguage: updatedSettings.preferredLanguage,
         autoTranslateEnabled: updatedSettings.autoTranslateEnabled,
+        soundEnabled: updatedSettings.soundEnabled,
         hasCustomApiKey: !!updatedSettings.openaiApiKey,
         updatedAt: updatedSettings.updatedAt
       }

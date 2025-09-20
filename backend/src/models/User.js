@@ -83,6 +83,59 @@ class User {
     }
   }
 
+  // Update user password
+  static async updatePassword(id, hashedPassword) {
+    const query = `
+      UPDATE users
+      SET password = $1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING id, email, full_name, profile_pic, created_at, updated_at
+    `;
+
+    try {
+      const result = await pool.query(query, [hashedPassword, id]);
+      return result.rows.length > 0 ? this.formatUser(result.rows[0]) : null;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Update user profile
+  static async updateProfile(id, updates) {
+    const allowedFields = ['full_name', 'profile_pic'];
+    const setClause = [];
+    const values = [];
+    let paramIndex = 1;
+
+    // Build dynamic SET clause
+    for (const [key, value] of Object.entries(updates)) {
+      if (allowedFields.includes(key) && value !== undefined) {
+        setClause.push(`${key} = $${paramIndex}`);
+        values.push(value);
+        paramIndex++;
+      }
+    }
+
+    if (setClause.length === 0) {
+      throw new Error('No valid fields to update');
+    }
+
+    const query = `
+      UPDATE users
+      SET ${setClause.join(', ')}, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $${paramIndex}
+      RETURNING id, email, full_name, profile_pic, created_at, updated_at
+    `;
+    values.push(id);
+
+    try {
+      const result = await pool.query(query, values);
+      return result.rows.length > 0 ? this.formatUser(result.rows[0]) : null;
+    } catch (error) {
+      throw error;
+    }
+  }
+
   // Check if user exists
   static async exists(id) {
     const query = 'SELECT 1 FROM users WHERE id = $1';

@@ -44,16 +44,18 @@ class UserSettings {
   static async upsert(userId, settings) {
     const query = `
       INSERT INTO user_settings (
-        user_id, 
-        preferred_language, 
-        auto_translate_enabled, 
+        user_id,
+        preferred_language,
+        auto_translate_enabled,
+        sound_enabled,
         openai_api_key,
         updated_at
-      ) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-      ON CONFLICT (user_id) 
-      DO UPDATE SET 
+      ) VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+      ON CONFLICT (user_id)
+      DO UPDATE SET
         preferred_language = EXCLUDED.preferred_language,
         auto_translate_enabled = EXCLUDED.auto_translate_enabled,
+        sound_enabled = EXCLUDED.sound_enabled,
         openai_api_key = EXCLUDED.openai_api_key,
         updated_at = CURRENT_TIMESTAMP
       RETURNING *
@@ -64,6 +66,7 @@ class UserSettings {
         userId,
         settings.preferredLanguage || 'en',
         settings.autoTranslateEnabled || false,
+        settings.soundEnabled !== undefined ? settings.soundEnabled : true,
         settings.openaiApiKey || null
       ]);
 
@@ -142,6 +145,7 @@ class UserSettings {
       userId: row.user_id,
       preferredLanguage: row.preferred_language,
       autoTranslateEnabled: row.auto_translate_enabled,
+      soundEnabled: row.sound_enabled,
       openaiApiKey: row.openai_api_key,
       createdAt: row.created_at,
       updatedAt: row.updated_at
@@ -158,6 +162,7 @@ class UserSettings {
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         preferred_language VARCHAR(10) DEFAULT 'en',
         auto_translate_enabled BOOLEAN DEFAULT false,
+        sound_enabled BOOLEAN DEFAULT true,
         openai_api_key TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

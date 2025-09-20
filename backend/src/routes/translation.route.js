@@ -1,10 +1,13 @@
 import express from "express";
-import { 
-  getSupportedLanguages, 
-  translateMessage, 
-  detectTextLanguage, 
-  batchTranslate, 
-  getTranslationStatus 
+import {
+  getSupportedLanguages,
+  translateMessage,
+  translateMessageById,
+  detectTextLanguage,
+  batchTranslate,
+  getTranslationStatus,
+  getTranslationHistory,
+  getTranslationStats
 } from "../controllers/translation.controller.js";
 import { protectRoute } from "../middleware/auth.middleware.js";
 
@@ -19,6 +22,9 @@ router.get("/languages", getSupportedLanguages);
 // Translate text
 router.post("/translate", translateMessage);
 
+// Translate specific message by ID
+router.post("/message/:messageId", translateMessageById);
+
 // Detect language
 router.post("/detect", detectTextLanguage);
 
@@ -27,5 +33,11 @@ router.post("/batch", batchTranslate);
 
 // Get translation service status
 router.get("/status", getTranslationStatus);
+
+// Get translation history
+router.get("/history", getTranslationHistory);
+
+// Get translation statistics
+router.get("/stats", getTranslationStats);
 
 export default router;

@@ -1,5 +1,6 @@
 import { getReceiverSocketId, io } from "../lib/socket.js";
 import Message from "../models/Message.js";
+import TranslationHistory from "../models/TranslationHistory.js";
 import User from "../models/User.js";
 import { sanitizeMessageText, validateImageData } from "../utils/security.utils.js";
 
@@ -100,6 +101,26 @@ export const sendMessage = async (req, res) => {
       imageName,
       imageType,
     });
+
+    // Create translation history entry if message was translated
+    if (isAutoTranslated && originalText && translatedFrom && translatedTo) {
+      try {
+        await TranslationHistory.create({
+          userId: senderId,
+          messageId: newMessage.id,
+          originalText: originalText,
+          translatedText: sanitizedText,
+          sourceLanguage: translatedFrom,
+          targetLanguage: translatedTo,
+          translationType: 'auto',
+          apiProvider: 'openai'
+        });
+        console.log("✅ Translation history entry created");
+      } catch (historyError) {
+        console.error("❌ Failed to create translation history:", historyError);
+        // Don't fail the message sending if history creation fails
+      }
+    }
 
     const receiverSocketId = getReceiverSocketId(receiverId);
     const senderSocketId = getReceiverSocketId(senderId);

@@ -2,6 +2,7 @@ import pkg from 'pg';
 const { Pool } = pkg;
 import { ENV } from "./env.js";
 import UserSettings from "../models/UserSettings.js";
+import TranslationHistory from "../models/TranslationHistory.js";
 
 // Create PostgreSQL connection pool
 export const pool = new Pool({
@@ -78,6 +79,9 @@ const createTables = async () => {
     // Create user settings table
     await UserSettings.createTable();
 
+    // Create translation history table
+    await TranslationHistory.createTable();
+
     console.log("Database tables created successfully");
 
     // Run migrations for existing tables
@@ -92,15 +96,15 @@ const runMigrations = async () => {
   try {
     console.log("🔄 Running database migrations...");
 
-    // Check if translation columns exist
-    const checkColumns = await pool.query(`
+    // Check if translation columns exist in messages table
+    const checkMessageColumns = await pool.query(`
       SELECT column_name
       FROM information_schema.columns
       WHERE table_name = 'messages'
       AND column_name IN ('original_text', 'translated_from', 'translated_to', 'is_auto_translated')
     `);
 
-    if (checkColumns.rows.length === 0) {
+    if (checkMessageColumns.rows.length === 0) {
       console.log("📝 Adding translation columns to messages table...");
 
       // Add translation columns
@@ -115,6 +119,28 @@ const runMigrations = async () => {
       console.log("✅ Translation columns added successfully");
     } else {
       console.log("✅ Translation columns already exist");
+    }
+
+    // Check if sound_enabled column exists in user_settings table
+    const checkSettingsColumns = await pool.query(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = 'user_settings'
+      AND column_name = 'sound_enabled'
+    `);
+
+    if (checkSettingsColumns.rows.length === 0) {
+      console.log("📝 Adding sound_enabled column to user_settings table...");
+
+      // Add sound_enabled column
+      await pool.query(`
+        ALTER TABLE user_settings
+        ADD COLUMN IF NOT EXISTS sound_enabled BOOLEAN DEFAULT true
+      `);
+
+      console.log("✅ Sound settings column added successfully");
+    } else {
+      console.log("✅ Sound settings column already exists");
     }
   } catch (error) {
     console.error("❌ Error running migrations:", error);

@@ -1,5 +1,8 @@
 import { translateText, SUPPORTED_LANGUAGES, detectLanguage } from "../services/translation.service.js";
 import UserSettings from "../models/UserSettings.js";
+import TranslationHistory from "../models/TranslationHistory.js";
+import Message from "../models/Message.js";
+import { pool } from "../lib/db.js";
 
 /**
  * Get all supported languages
@@ -234,5 +237,156 @@ export const getTranslationStatus = async (req, res) => {
       success: false,
       error: "Internal server error" 
     });
+  }
+};
+
+/**
+ * Translate a specific message by ID (manual translation)
+ */
+export const translateMessageById = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const { targetLanguage, sourceLanguage } = req.body;
+    const userId = req.user.id;
+
+    console.log(`🌍 Manual translation request: messageId=${messageId}, target=${targetLanguage}, source=${sourceLanguage}`);
+
+    // Get the message
+    const messageQuery = 'SELECT * FROM messages WHERE id = $1';
+    const messageResult = await pool.query(messageQuery, [messageId]);
+
+    if (messageResult.rows.length === 0) {
+      return res.status(404).json({ error: "Message not found" });
+    }
+
+    const message = messageResult.rows[0];
+
+    // Check if user has access to this message
+    if (message.sender_id !== userId && message.receiver_id !== userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    // Use original text if available, otherwise use current text
+    const textToTranslate = message.original_text || message.text;
+    const actualSourceLanguage = sourceLanguage || message.translated_from || 'auto';
+
+    // Get user's custom OpenAI API key if they have one
+    const userApiKey = await UserSettings.getUserApiKey(userId);
+
+    // Translate the text
+    const translationResult = await translateText(textToTranslate, targetLanguage, actualSourceLanguage, userApiKey);
+
+    if (!translationResult.success) {
+      return res.status(500).json({ error: translationResult.error || "Translation failed" });
+    }
+
+    // Create translation history entry
+    try {
+      await TranslationHistory.create({
+        userId: userId,
+        messageId: parseInt(messageId),
+        originalText: textToTranslate,
+        translatedText: translationResult.translatedText,
+        sourceLanguage: translationResult.sourceLanguage || actualSourceLanguage,
+        targetLanguage: targetLanguage,
+        translationType: 'manual',
+        apiProvider: translationResult.provider || 'openai'
+      });
+    } catch (historyError) {
+      console.error("❌ Failed to create translation history:", historyError);
+      // Continue even if history creation fails
+    }
+
+    res.json({
+      success: true,
+      originalText: textToTranslate,
+      translatedText: translationResult.translatedText,
+      sourceLanguage: translationResult.sourceLanguage || actualSourceLanguage,
+      targetLanguage: targetLanguage,
+      provider: translationResult.provider
+    });
+
+  } catch (error) {
+    console.error("❌ Error in translateMessageById:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+/**
+ * Get translation history for the current user
+ */
+export const getTranslationHistory = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { limit = 50, offset = 0 } = req.query;
+
+    console.log(`📚 Fetching translation history for user ${userId}`);
+
+    const history = await TranslationHistory.findByUserId(
+      userId,
+      parseInt(limit),
+      parseInt(offset)
+    );
+
+    res.json({
+      success: true,
+      history: history,
+      pagination: {
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        hasMore: history.length === parseInt(limit)
+      }
+    });
+
+  } catch (error) {
+    console.error("❌ Error in getTranslationHistory:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+/**
+ * Get translation statistics for the current user
+ */
+export const getTranslationStats = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    console.log(`📊 Fetching translation stats for user ${userId}`);
+
+    const stats = await TranslationHistory.getTranslationStats(userId);
+
+    // Process stats to create summary
+    const summary = {
+      totalTranslations: 0,
+      autoTranslations: 0,
+      manualTranslations: 0,
+      uniqueLanguagePairs: stats.length,
+      topLanguagePairs: stats.slice(0, 5),
+      languageBreakdown: {}
+    };
+
+    stats.forEach(stat => {
+      summary.totalTranslations += parseInt(stat.language_pair_count);
+
+      if (!summary.languageBreakdown[stat.source_language]) {
+        summary.languageBreakdown[stat.source_language] = {};
+      }
+      summary.languageBreakdown[stat.source_language][stat.target_language] = parseInt(stat.language_pair_count);
+    });
+
+    // Get overall counts (this is a simplified version, you might want to optimize this query)
+    if (stats.length > 0) {
+      summary.autoTranslations = parseInt(stats[0].auto_translations) || 0;
+      summary.manualTranslations = parseInt(stats[0].manual_translations) || 0;
+    }
+
+    res.json({
+      success: true,
+      stats: summary
+    });
+
+  } catch (error) {
+    console.error("❌ Error in getTranslationStats:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 };
