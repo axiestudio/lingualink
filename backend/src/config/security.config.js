@@ -3,11 +3,19 @@ import { ENV } from '../lib/env.js';
 // CORS configuration
 export const corsConfig = {
   origin: function (origin, callback) {
+    console.log('🌐 CORS Check - Origin:', origin);
+    console.log('🌐 CORS Check - CLIENT_URL:', ENV.CLIENT_URL);
+
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
+    if (!origin) {
+      console.log('✅ CORS - No origin, allowing');
+      return callback(null, true);
+    }
+
     const allowedOrigins = [
       ENV.CLIENT_URL,
+      'https://www.lingualink.tech',
+      'https://lingualink.tech',
       'http://localhost:5173',
       'http://127.0.0.1:5173',
       'http://localhost:3000',
@@ -15,12 +23,16 @@ export const corsConfig = {
       'http://localhost:5174',
     ];
 
+    console.log('🌐 CORS Check - Allowed origins:', allowedOrigins);
+
     // Allow localhost origins for development even in production
     const isLocalhost = origin && (origin.includes('localhost') || origin.includes('127.0.0.1'));
 
     if (allowedOrigins.indexOf(origin) !== -1 || isLocalhost) {
+      console.log('✅ CORS - Origin allowed:', origin);
       callback(null, true);
     } else {
+      console.log('❌ CORS - Origin blocked:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
