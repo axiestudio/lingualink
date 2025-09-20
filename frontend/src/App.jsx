@@ -17,8 +17,6 @@ function App() {
 
   useEffect(() => {
     checkAuth();
-    // Initialize translation store
-    fetchSupportedLanguages();
 
     // Start keep-alive service for Render free tier
     console.log("🚀 Starting keep-alive service to prevent backend sleeping");
@@ -28,7 +26,14 @@ function App() {
     return () => {
       keepAliveService.stop();
     };
-  }, [checkAuth, fetchSupportedLanguages]);
+  }, [checkAuth]);
+
+  // Fetch supported languages only after successful authentication
+  useEffect(() => {
+    if (authUser && !isCheckingAuth) {
+      fetchSupportedLanguages();
+    }
+  }, [authUser, isCheckingAuth, fetchSupportedLanguages]);
 
   // Load user settings when authenticated
   useEffect(() => {

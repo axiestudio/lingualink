@@ -3,7 +3,7 @@ import { axiosInstance } from "../lib/axios";
 import toast from "react-hot-toast";
 import { io } from "socket.io-client";
 
-const BASE_URL = "https://lingualink-lcyv.onrender.com";
+const BASE_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || "https://lingualink-lcyv.onrender.com";
 
 export const useAuthStore = create((set, get) => ({
   authUser: null,
