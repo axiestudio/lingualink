@@ -10,22 +10,18 @@ export const corsConfig = {
       ENV.CLIENT_URL,
       'http://localhost:5173',
       'http://127.0.0.1:5173',
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:5174',
     ];
-    
-    // In production, be more strict
-    if (ENV.NODE_ENV === 'production') {
-      if (allowedOrigins.indexOf(origin) !== -1) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
+
+    // Allow localhost origins for development even in production
+    const isLocalhost = origin && (origin.includes('localhost') || origin.includes('127.0.0.1'));
+
+    if (allowedOrigins.indexOf(origin) !== -1 || isLocalhost) {
+      callback(null, true);
     } else {
-      // In development, allow localhost variations
-      if (origin.includes('localhost') || origin.includes('127.0.0.1') || allowedOrigins.indexOf(origin) !== -1) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
