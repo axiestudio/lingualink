@@ -55,7 +55,7 @@ class KeepAliveService {
   async ping(retryCount = 0) {
     try {
       const startTime = Date.now();
-      const response = await axiosInstance.get('/api/ping', {
+      const response = await axiosInstance.get('/ping', {
         timeout: 5000, // 5 second timeout
       });
 
